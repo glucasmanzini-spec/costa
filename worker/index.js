@@ -392,6 +392,8 @@ async function characterCommentRoutes(request, env, url) {
     id TEXT PRIMARY KEY, character_id TEXT NOT NULL, user_id TEXT NOT NULL,
     content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   )`).run();
+  try { await env.DB.prepare("ALTER TABLE character_comments ADD COLUMN parent_id TEXT").run(); } catch {}
+  try { await env.DB.prepare("ALTER TABLE character_comments ADD COLUMN image_url TEXT").run(); } catch {}
   const parts = url.pathname.split("/").filter(Boolean).slice(2).map(decodeURIComponent);
   const characterId = parts[0] || "";
   if (!characterId || characterId.length > 120) return json({ error: "Personagem inválido." }, 400);
@@ -401,7 +403,7 @@ async function characterCommentRoutes(request, env, url) {
   if (character && character.visibility !== "public" && character.user_id !== user?.id) return json({ error: "Personagem não encontrado." }, 404);
   if (request.method === "GET") {
     const result = await env.DB.prepare(
-      "SELECT c.id, c.content, c.created_at, c.user_id, u.display_name, p.username, COALESCE(p.avatar_url, u.avatar_url) AS avatar_url, CASE WHEN c.user_id = ? THEN 1 ELSE 0 END AS is_author, CASE WHEN ? = 1 THEN 1 ELSE 0 END AS can_moderate FROM character_comments c JOIN users u ON u.id = c.user_id LEFT JOIN user_profiles p ON p.user_id = c.user_id WHERE c.character_id = ? ORDER BY c.created_at DESC LIMIT 100"
+      "SELECT c.id, c.parent_id, c.content, c.image_url, c.created_at, c.user_id, u.display_name, p.username, COALESCE(p.avatar_url, u.avatar_url) AS avatar_url, CASE WHEN c.user_id = ? THEN 1 ELSE 0 END AS is_author, CASE WHEN ? = 1 THEN 1 ELSE 0 END AS can_moderate FROM character_comments c JOIN users u ON u.id = c.user_id LEFT JOIN user_profiles p ON p.user_id = c.user_id WHERE c.character_id = ? ORDER BY c.created_at ASC LIMIT 300"
     ).bind(user?.id || "", character && user?.id === character.user_id ? 1 : 0, characterId).all();
     return json({ comments: (result.results || []).map(({ user_id, can_moderate, ...comment }) => ({ ...comment, can_delete: Boolean(comment.is_author || can_moderate) })) });
   }
@@ -409,11 +411,18 @@ async function characterCommentRoutes(request, env, url) {
   if (request.method === "POST") {
     let body; try { body = await request.json(); } catch { return json({ error: "Comentário inválido." }, 400); }
     const content = String(body.content || "").trim();
-    if (!content || content.length > 500) return json({ error: "O comentário precisa ter entre 1 e 500 caracteres." }, 400);
+    const imageUrl = typeof body.image_url === "string" ? body.image_url : "";
+    const parentId = typeof body.parent_id === "string" ? body.parent_id : null;
+    if ((!content && !imageUrl) || content.length > 500) return json({ error: "Escreva até 500 caracteres ou anexe uma imagem." }, 400);
+    if (imageUrl && (!/^data:image\\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(imageUrl) || imageUrl.length > 1400000)) return json({ error: "A imagem deve ser PNG, JPG, WEBP ou GIF e ter no máximo 1 MB." }, 400);
+    if (parentId) {
+      const parent = await env.DB.prepare("SELECT id FROM character_comments WHERE id = ? AND character_id = ? AND parent_id IS NULL").bind(parentId, characterId).first();
+      if (!parent) return json({ error: "Comentário original não encontrado." }, 404);
+    }
     const id = crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO character_comments (id, character_id, user_id, content) VALUES (?, ?, ?, ?)").bind(id, characterId, user.id, content).run();
+    await env.DB.prepare("INSERT INTO character_comments (id, character_id, user_id, content, parent_id, image_url) VALUES (?, ?, ?, ?, ?, ?)").bind(id, characterId, user.id, content, parentId, imageUrl || null).run();
     const profile = await env.DB.prepare("SELECT username, avatar_url FROM user_profiles WHERE user_id = ?").bind(user.id).first();
-    return json({ comment: { id, content, created_at: new Date().toISOString(), display_name: user.display_name, username: profile?.username || user.username, avatar_url: profile?.avatar_url || user.avatar_url, is_author: 1, can_delete: true } }, 201);
+    return json({ comment: { id, parent_id: parentId, content, image_url: imageUrl || null, created_at: new Date().toISOString(), display_name: user.display_name, username: profile?.username || user.username, avatar_url: profile?.avatar_url || user.avatar_url, is_author: 1, can_delete: true } }, 201);
   }
   if (request.method === "DELETE" && parts[1]) {
     const comment = await env.DB.prepare("SELECT id, user_id FROM character_comments WHERE id = ? AND character_id = ?").bind(parts[1], characterId).first();
