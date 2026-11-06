@@ -140,9 +140,48 @@ async function authRoutes(request, env, url) {
   return null;
 }
 
+
+async function characterRoutes(request, env) {
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
+
+  if (request.method === "GET") {
+    const result = await env.DB.prepare(
+      "SELECT id, name, tagline, description, greeting, avatar_url, visibility, created_at FROM characters WHERE user_id = ? ORDER BY created_at DESC"
+    ).bind(user.id).all();
+    return json({ characters: result.results || [] });
+  }
+
+  if (request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const name = String(body.name || "").trim();
+    const tagline = String(body.tagline || "").trim();
+    const description = String(body.description || "").trim();
+    const greeting = String(body.greeting || "").trim();
+    const avatarUrl = body.avatarUrl == null ? null : String(body.avatarUrl);
+    if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
+    if (description.length < 2 || description.length > 1500) return json({ error: "A descrição precisa ter entre 2 e 1.500 caracteres." }, 400);
+    if (tagline.length > 100 || greeting.length > 500) return json({ error: "A frase curta ou saudação é muito longa." }, 400);
+    if (avatarUrl && (!/^data:image\\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000))
+      return json({ error: "A imagem precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO characters (id, user_id, name, tagline, description, greeting, avatar_url, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, 'private')"
+    ).bind(id, user.id, name, tagline, description, greeting || `Olá! Eu sou ${name}. Sobre o que vamos conversar?`, avatarUrl).run();
+    return json({ character: { id, name, tagline, description, greeting: greeting || `Olá! Eu sou ${name}. Sobre o que vamos conversar?`, avatar_url: avatarUrl, visibility: "private" } }, 201);
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/characters") {
+      try { return await characterRoutes(request, env); }
+      catch (error) { console.error("Character error:", error); return json({ error: "Não foi possível carregar ou salvar personagens." }, 500); }
+    }
 
     if (url.pathname.startsWith("/api/auth/")) {
       try {
