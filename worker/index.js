@@ -324,6 +324,38 @@ async function personaRoutes(request, env) {
   return json({ error: "Método não permitido." }, 405);
 }
 
+
+async function favoriteRoutes(request, env) {
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para acessar seus favoritos." }, 401);
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_favorites (
+    user_id TEXT NOT NULL, character_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (user_id, character_id)
+  )`).run();
+  if (request.method === "GET") {
+    const result = await env.DB.prepare(
+      "SELECT c.id, c.name, c.tagline, c.description, c.greeting, c.avatar_url, c.visibility, c.created_at FROM user_favorites f JOIN characters c ON c.id = f.character_id WHERE f.user_id = ? AND (c.visibility = 'public' OR c.user_id = ?) ORDER BY f.created_at DESC"
+    ).bind(user.id, user.id).all();
+    return json({ favorites: result.results || [] });
+  }
+  if (request.method === "POST" || request.method === "DELETE") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const characterId = String(body.characterId || "").trim().slice(0, 100);
+    if (!characterId) return json({ error: "Personagem inválido." }, 400);
+    if (request.method === "POST") {
+      const character = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND (visibility = 'public' OR user_id = ?)").bind(characterId, user.id).first();
+      if (!character) return json({ error: "Personagem não encontrado ou indisponível." }, 404);
+      await env.DB.prepare("INSERT OR IGNORE INTO user_favorites (user_id, character_id) VALUES (?, ?)").bind(user.id, characterId).run();
+      return json({ ok: true, favorited: true });
+    }
+    await env.DB.prepare("DELETE FROM user_favorites WHERE user_id = ? AND character_id = ?").bind(user.id, characterId).run();
+    return json({ ok: true, favorited: false });
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
+
 async function characterRoutes(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
@@ -380,6 +412,11 @@ export default {
     if (url.pathname === "/api/chat-counts") {
       try { return await characterCountRoutes(request, env); }
       catch (error) { console.error("Chat count error:", error); return json({ error: "Não foi possível atualizar os contadores." }, 500); }
+    }
+
+    if (url.pathname === "/api/favorites") {
+      try { return await favoriteRoutes(request, env); }
+      catch (error) { console.error("Favorites error:", error); return json({ error: "Não foi possível acessar seus favoritos." }, 500); }
     }
 
     if (url.pathname === "/api/characters") {
