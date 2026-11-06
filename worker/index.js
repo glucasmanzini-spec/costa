@@ -397,6 +397,28 @@ async function characterRoutes(request, env, url) {
     return json({ characters: result.results || [] });
   }
 
+  const characterId = url && url.pathname.startsWith("/api/characters/") ? decodeURIComponent(url.pathname.slice("/api/characters/".length)) : "";
+  if (characterId && request.method === "DELETE") {
+    const owned = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).first();
+    if (!owned) return json({ error: "Personagem não encontrado ou você não é o dono." }, 404);
+    await env.DB.prepare("DELETE FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).run();
+    await env.DB.prepare("DELETE FROM user_favorites WHERE character_id = ?").bind(characterId).run();
+    return json({ ok: true });
+  }
+  if (characterId && request.method === "PUT") {
+    let body; try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const name = String(body.name || "").trim(), tagline = String(body.tagline || "").trim(), description = String(body.description || "").trim(), greeting = String(body.greeting || "").trim();
+    const avatarUrl = body.avatarUrl == null ? null : String(body.avatarUrl), visibility = body.visibility === "public" ? "public" : "private";
+    if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
+    if (description.length < 2 || description.length > 1500) return json({ error: "A descrição precisa ter entre 2 e 1.500 caracteres." }, 400);
+    if (tagline.length > 100 || greeting.length > 500) return json({ error: "A frase curta ou saudação é muito longa." }, 400);
+    if (avatarUrl && (!/^data:image\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A imagem precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
+    const owned = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).first();
+    if (!owned) return json({ error: "Personagem não encontrado ou você não é o dono." }, 404);
+    const finalGreeting = greeting || ("Olá! Eu sou " + name + ". Sobre o que vamos conversar?");
+    await env.DB.prepare("UPDATE characters SET name = ?, tagline = ?, description = ?, greeting = ?, avatar_url = ?, visibility = ? WHERE id = ? AND user_id = ?").bind(name, tagline, description, finalGreeting, avatarUrl, visibility, characterId, user.id).run();
+    return json({ character: { id: characterId, name, tagline, description, greeting: finalGreeting, avatar_url: avatarUrl, visibility, is_owner: 1 } });
+  }
   if (request.method === "POST") {
     let body;
     try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
@@ -449,8 +471,8 @@ export default {
       catch (error) { console.error("Favorites error:", error); return json({ error: "Não foi possível acessar seus favoritos." }, 500); }
     }
 
-    if (url.pathname === "/api/characters") {
-      try { return await characterRoutes(request, env); }
+    if (url.pathname === "/api/characters" || url.pathname.startsWith("/api/characters/")) {
+      try { return await characterRoutes(request, env, url); }
       catch (error) { console.error("Character error:", error); return json({ error: "Não foi possível carregar ou salvar personagens." }, 500); }
     }
 
