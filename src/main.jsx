@@ -45,6 +45,8 @@ function App() {
   const [characters, setCharacters] = useState(starterCharacters);
   const [selected, setSelected] = useState(null);
   const [messagesById, setMessagesById] = useState({});
+  const [chatCounts, setChatCounts] = useState({});
+  const [countedChatIds, setCountedChatIds] = useState(() => new Set());
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -64,6 +66,12 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/chat-counts").then(r => r.json()).then(data => {
+      if (Array.isArray(data.counts)) setChatCounts(Object.fromEntries(data.counts.map(item => [item.character_id, Number(item.chat_count) || 0])));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(data => setAuthUser(data.user || null)).catch(() => {});
@@ -139,6 +147,15 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erro ao conversar com a IA.");
       updateMessages(selected.id, [...next, { role: "assistant", content: data.reply }]);
+      if (!countedChatIds.has(selected.id)) {
+        setCountedChatIds(prev => new Set([...prev, selected.id]));
+        fetch("/api/chat-counts", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ characterId: selected.id })
+        }).then(r => r.json()).then(result => {
+          if (result.chatCount != null) setChatCounts(prev => ({ ...prev, [selected.id]: result.chatCount }));
+        }).catch(() => {});
+      }
     } catch (error) {
       setNotice(error.message || "Não foi possível enviar a mensagem.");
     } finally {
@@ -266,7 +283,7 @@ function App() {
               {filtered.map(character => (
                 <button className="character-card" key={character.id} onClick={() => openCharacter(character)}>
                   <div className={`card-art ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <><div className="card-orbit"></div><span>{character.emoji}</span></>}<div className="card-heart"><Heart size={16} /></div></div>
-                  <div className="card-info"><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="sparkle-mini">✦</span></div></div>
+                  <div className="card-info"><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="chat-count"><MessageCircle size={12} /> {chatCounts[character.id] || 0} chats</span></div></div>
                 </button>
               ))}
               {filtered.length === 0 && <div className="empty-state">Nenhum personagem encontrado. Tente outra busca.</div>}
