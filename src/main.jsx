@@ -691,7 +691,6 @@ function App() {
                   </article>
                 ))}
               </div>
-            </div>
             </section>
           </section>
         ) : showFavorites ? (
