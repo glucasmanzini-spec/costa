@@ -81,6 +81,10 @@ function App() {
   const squadMessagesRef = useRef([]);
   const squadSpeakerRef = useRef(0);
   const [favorites, setFavorites] = useState([]);
+  const [characterComments, setCharacterComments] = useState([]);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentsBusy, setCommentsBusy] = useState(false);
+  const [commentSending, setCommentSending] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
   const [activePersonaId, setActivePersonaId] = useState("");
@@ -124,6 +128,18 @@ function App() {
   const [profileSearch, setProfileSearch] = useState("");
   const [profileResults, setProfileResults] = useState([]);
   const [profileBusy, setProfileBusy] = useState(false);
+
+  useEffect(() => {
+    if (!selected?.id) { setCharacterComments([]); setCommentDraft(""); return; }
+    let cancelled = false;
+    setCommentsBusy(true);
+    fetch("/api/character-comments/" + encodeURIComponent(selected.id))
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "Falha ao carregar comentários."); return data; })
+      .then(data => { if (!cancelled) setCharacterComments(Array.isArray(data.comments) ? data.comments : []); })
+      .catch(() => { if (!cancelled) setCharacterComments([]); })
+      .finally(() => { if (!cancelled) setCommentsBusy(false); });
+    return () => { cancelled = true; };
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!authUser) { setPersonas([]); setActivePersonaId(""); return; }
@@ -425,6 +441,33 @@ function App() {
     setMessagesById(prev => ({ ...prev, [id]: next }));
   }
 
+  async function sendCharacterComment(event) {
+    event.preventDefault();
+    const content = commentDraft.trim();
+    if (!content || commentSending || !selected?.id) return;
+    if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para comentar."); return; }
+    setCommentSending(true);
+    try {
+      const response = await fetch("/api/character-comments/" + encodeURIComponent(selected.id), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível publicar o comentário.");
+      setCharacterComments(prev => [data.comment, ...prev]); setCommentDraft("");
+    } catch (error) { setNotice(error.message); }
+    finally { setCommentSending(false); }
+  }
+
+  async function deleteCharacterComment(comment) {
+    if (!window.confirm("Excluir este comentário?")) return;
+    try {
+      const response = await fetch("/api/character-comments/" + encodeURIComponent(selected.id) + "/" + encodeURIComponent(comment.id), { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o comentário.");
+      setCharacterComments(prev => prev.filter(item => item.id !== comment.id));
+    } catch (error) { setNotice(error.message); }
+  }
+
   async function sendMessage(event) {
     event?.preventDefault();
     const content = draft.trim();
@@ -630,6 +673,22 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+            <section className="character-comments">
+              <div className="comments-heading"><div><h2>Comentários</h2><span>{characterComments.length} {characterComments.length === 1 ? "comentário" : "comentários"}</span></div></div>
+              <form className="comment-composer" onSubmit={sendCharacterComment}>
+                <input value={commentDraft} onChange={e => setCommentDraft(e.target.value)} maxLength={500} placeholder={authUser ? "O que você achou deste personagem?" : "Entre para deixar um comentário..."} aria-label="Escreva um comentário" />
+                <button type="submit" disabled={!commentDraft.trim() || commentSending}>{commentSending ? "Enviando..." : "Comentar"}</button>
+              </form>
+              <div className="comment-list">
+                {commentsBusy ? <div className="comments-empty">Carregando comentários...</div> : characterComments.length === 0 ? <div className="comments-empty">Ainda não há comentários. Seja a primeira pessoa a comentar!</div> : characterComments.map(comment => (
+                  <article className="comment-item" key={comment.id}>
+                    <div className="comment-avatar">{comment.avatar_url ? <img src={comment.avatar_url} alt="" /> : (comment.display_name || "?").slice(0, 1).toUpperCase()}</div>
+                    <div className="comment-content"><div className="comment-meta"><strong>{comment.display_name || "Usuário"}</strong><span>@{comment.username || "usuario"}</span><time>{new Date(comment.created_at).toLocaleDateString("pt-BR")}</time></div><p>{comment.content}</p></div>
+                    {comment.can_delete && <button className="comment-delete" type="button" onClick={() => deleteCharacterComment(comment)} title="Excluir comentário" aria-label="Excluir comentário"><X size={15} /></button>}
+                  </article>
+                ))}
+              </div>
+            </section>
           </section>
         ) : showFavorites ? (
           <section className="explore-view history-view">
