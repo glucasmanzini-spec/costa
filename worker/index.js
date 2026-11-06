@@ -169,6 +169,72 @@ async function characterCountRoutes(request, env) {
   return json({ error: "Método não permitido." }, 405);
 }
 
+async function conversationRoutes(request, env, url) {
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para salvar e acessar seu histórico." }, 401);
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS saved_conversations (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, character_id TEXT NOT NULL,
+    character_name TEXT NOT NULL, character_tagline TEXT NOT NULL DEFAULT '',
+    character_description TEXT NOT NULL DEFAULT '', character_greeting TEXT NOT NULL DEFAULT '',
+    character_avatar_url TEXT, character_emoji TEXT NOT NULL DEFAULT '✨',
+    character_color TEXT NOT NULL DEFAULT 'violet', title TEXT NOT NULL DEFAULT 'Nova conversa',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`).run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS saved_messages (
+    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')), content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`).run();
+
+  const match = url.pathname.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)$/);
+  const messagesMatch = url.pathname.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)\/messages$/);
+  if (url.pathname === "/api/conversations" && request.method === "GET") {
+    const result = await env.DB.prepare("SELECT id, character_id, character_name, character_tagline, character_avatar_url, character_emoji, character_color, title, created_at, updated_at FROM saved_conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100").bind(user.id).all();
+    return json({ conversations: result.results || [] });
+  }
+  if (url.pathname === "/api/conversations" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const id = String(body.id || crypto.randomUUID()).slice(0, 80);
+    const characterId = String(body.characterId || "").slice(0, 100);
+    const characterName = String(body.characterName || "").trim().slice(0, 80);
+    if (!characterId || !characterName) return json({ error: "Personagem inválido." }, 400);
+    const greeting = String(body.greeting || "").slice(0, 1800);
+    await env.DB.prepare("INSERT INTO saved_conversations (id, user_id, character_id, character_name, character_tagline, character_description, character_greeting, character_avatar_url, character_emoji, character_color, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(
+      id, user.id, characterId, characterName, String(body.tagline || "").slice(0, 120),
+      String(body.description || "").slice(0, 1500), greeting,
+      body.avatarUrl ? String(body.avatarUrl).slice(0, 700000) : null,
+      String(body.emoji || "✨").slice(0, 8), String(body.color || "violet").slice(0, 30), "Nova conversa"
+    ).run();
+    if (greeting) await env.DB.prepare("INSERT INTO saved_messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, 'assistant', ?)").bind(crypto.randomUUID(), id, user.id, greeting).run();
+    return json({ id }, 201);
+  }
+  if (match && request.method === "GET") {
+    const conversation = await env.DB.prepare("SELECT * FROM saved_conversations WHERE id = ? AND user_id = ?").bind(match[1], user.id).first();
+    if (!conversation) return json({ error: "Conversa não encontrada." }, 404);
+    const result = await env.DB.prepare("SELECT role, content, created_at FROM saved_messages WHERE conversation_id = ? AND user_id = ? ORDER BY created_at ASC, rowid ASC").bind(match[1], user.id).all();
+    return json({ conversation, messages: result.results || [] });
+  }
+  if (messagesMatch && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const conversation = await env.DB.prepare("SELECT id FROM saved_conversations WHERE id = ? AND user_id = ?").bind(messagesMatch[1], user.id).first();
+    if (!conversation) return json({ error: "Conversa não encontrada." }, 404);
+    const messages = Array.isArray(body.messages) ? body.messages.slice(-2) : [];
+    for (const message of messages) {
+      const role = message.role === "assistant" ? "assistant" : "user";
+      const content = String(message.content || "").slice(0, 1800);
+      if (!content) continue;
+      await env.DB.prepare("INSERT INTO saved_messages (id, conversation_id, user_id, role, content) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), messagesMatch[1], user.id, role, content).run();
+      if (role === "user") await env.DB.prepare("UPDATE saved_conversations SET title = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND user_id = ?").bind(content.slice(0, 70), messagesMatch[1], user.id).run();
+      else await env.DB.prepare("UPDATE saved_conversations SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND user_id = ?").bind(messagesMatch[1], user.id).run();
+    }
+    return json({ ok: true });
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
+
 async function characterRoutes(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
@@ -206,6 +272,11 @@ async function characterRoutes(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
+      try { return await conversationRoutes(request, env, url); }
+      catch (error) { console.error("Conversation error:", error); return json({ error: "Não foi possível acessar o histórico de conversas." }, 500); }
+    }
 
     if (url.pathname === "/api/chat-counts") {
       try { return await characterCountRoutes(request, env); }
