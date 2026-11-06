@@ -42,3 +42,6 @@
 
 /* Character favorites */
 .character-card{position:relative}.card-art,.card-info{cursor:pointer}.favorite-toggle{position:absolute;right:11px;top:11px;z-index:3;width:34px;height:34px;border:1px solid #ffffff35;border-radius:50%;display:grid;place-items:center;background:#11131dcc;color:#f3eefe;backdrop-filter:blur(8px);transition:.18s}.favorite-toggle:hover{transform:scale(1.08);background:#30213f}.favorite-toggle.favorited{color:#ff6b9d;border-color:#ff6b9d66;background:#351b2b}.favorite-nav-count{margin-left:auto;font-size:10px;color:#a995df;background:#302443;border-radius:12px;padding:2px 7px}.favorite-card-art{cursor:pointer}
+
+/* Character creator handle */
+.character-creator{display:block;margin-top:5px;color:#a995df;font-size:10px;font-weight:600;letter-spacing:.1px}.character-creator::first-letter{color:#c4aaff}
