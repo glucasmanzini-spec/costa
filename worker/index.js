@@ -217,6 +217,28 @@ async function characterCountRoutes(request, env) {
     return json({ counts: result.results || [] });
   }
 
+  const characterId = url && url.pathname.startsWith("/api/characters/") ? decodeURIComponent(url.pathname.slice("/api/characters/".length)) : "";
+  if (characterId && request.method === "DELETE") {
+    const owned = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).first();
+    if (!owned) return json({ error: "Personagem não encontrado ou você não é o dono." }, 404);
+    await env.DB.prepare("DELETE FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).run();
+    await env.DB.prepare("DELETE FROM user_favorites WHERE character_id = ?").bind(characterId).run();
+    return json({ ok: true });
+  }
+  if (characterId && request.method === "PUT") {
+    let body; try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const name = String(body.name || "").trim(), tagline = String(body.tagline || "").trim(), description = String(body.description || "").trim(), greeting = String(body.greeting || "").trim();
+    const avatarUrl = body.avatarUrl == null ? null : String(body.avatarUrl), visibility = body.visibility === "public" ? "public" : "private";
+    if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
+    if (description.length < 2 || description.length > 1500) return json({ error: "A descrição precisa ter entre 2 e 1.500 caracteres." }, 400);
+    if (tagline.length > 100 || greeting.length > 500) return json({ error: "A frase curta ou saudação é muito longa." }, 400);
+    if (avatarUrl && (!/^data:image\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A imagem precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
+    const owned = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND user_id = ?").bind(characterId, user.id).first();
+    if (!owned) return json({ error: "Personagem não encontrado ou você não é o dono." }, 404);
+    const finalGreeting = greeting || ("Olá! Eu sou " + name + ". Sobre o que vamos conversar?");
+    await env.DB.prepare("UPDATE characters SET name = ?, tagline = ?, description = ?, greeting = ?, avatar_url = ?, visibility = ? WHERE id = ? AND user_id = ?").bind(name, tagline, description, finalGreeting, avatarUrl, visibility, characterId, user.id).run();
+    return json({ character: { id: characterId, name, tagline, description, greeting: finalGreeting, avatar_url: avatarUrl, visibility, is_owner: 1 } });
+  }
   if (request.method === "POST") {
     let body;
     try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
@@ -364,14 +386,14 @@ async function favoriteRoutes(request, env) {
   return json({ error: "Método não permitido." }, 405);
 }
 
-async function characterRoutes(request, env) {
+async function characterRoutes(request, env, url) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
 
   if (request.method === "GET") {
     const result = await env.DB.prepare(
-      "SELECT c.id, c.name, c.tagline, c.description, c.greeting, c.avatar_url, c.visibility, c.created_at, p.username AS creator_username FROM characters c LEFT JOIN user_profiles p ON p.user_id = c.user_id WHERE c.visibility = 'public' OR c.user_id = ? ORDER BY c.created_at DESC"
-    ).bind(user.id).all();
+      "SELECT c.id, c.name, c.tagline, c.description, c.greeting, c.avatar_url, c.visibility, c.created_at, p.username AS creator_username, CASE WHEN c.user_id = ? THEN 1 ELSE 0 END AS is_owner FROM characters c LEFT JOIN user_profiles p ON p.user_id = c.user_id WHERE c.visibility = 'public' OR c.user_id = ? ORDER BY c.created_at DESC"
+    ).bind(user.id, user.id).all();
     return json({ characters: result.results || [] });
   }
 
