@@ -144,7 +144,7 @@ function App() {
 
   function openPersonas() {
     if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para criar e gerenciar personas."); return; }
-    setShowHistory(false); setShowPersonas(true); setSelected(null); setMobileMenu(false);
+    setShowHistory(false); setShowFavorites(false); setShowPersonas(true); setSelected(null); setMobileMenu(false);
   }
 
   async function openOwnProfile() {
@@ -155,7 +155,7 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível carregar seu perfil.");
       setProfileData(data.profile); setViewedProfile(null);
-      setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
+      setShowFavorites(false); setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
     } catch (error) { setNotice(error.message); }
     finally { setProfileBusy(false); }
   }
@@ -167,7 +167,7 @@ function App() {
       const response = await fetch("/api/users?username=" + encodeURIComponent(username));
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Perfil não encontrado.");
-      setViewedProfile(data.profile); setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
+      setViewedProfile(data.profile); setShowFavorites(false); setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
     } catch (error) { setNotice(error.message); }
     finally { setProfileBusy(false); }
   }
@@ -321,7 +321,7 @@ function App() {
       const response = await fetch("/api/conversations");
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível carregar o histórico.");
-      setHistoryItems(data.conversations || []); setSelected(null); setShowHistory(true); setMobileMenu(false);
+      setHistoryItems(data.conversations || []); setSelected(null); setShowFavorites(false); setShowHistory(true); setMobileMenu(false);
     } catch (error) { setNotice(error.message); }
     finally { setHistoryBusy(false); }
   }
@@ -436,7 +436,7 @@ function App() {
         </div>
         <button className="create-button" onClick={() => setCreating(true)}><Plus size={18} /> Criar personagem</button>
         <nav className="main-nav">
-          <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
+          <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowFavorites(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
           <button className={`nav-item ${showFavorites ? "active" : ""}`} onClick={() => { if (!authUser) { setAuthMode("login"); return; } setShowFavorites(true); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false); }}><Heart size={18} /> Meus favoritos <span className="favorite-nav-count">{favorites.length}</span></button>
