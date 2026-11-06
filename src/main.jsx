@@ -65,6 +65,8 @@ function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [favorites, setFavorites] = useState([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
   const [activePersonaId, setActivePersonaId] = useState("");
@@ -253,11 +255,12 @@ function App() {
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     setAuthUser(null);
-    setShowProfile(false); setViewedProfile(null); setProfileData(null);
+    setShowProfile(false); setViewedProfile(null); setProfileData(null); setFavorites([]); setShowFavorites(false);
   }
 
   useEffect(() => {
-    if (!authUser) { setCharacters(starterCharacters); return; }
+    if (!authUser) { setCharacters(starterCharacters); setFavorites([]); return; }
+    fetch("/api/favorites").then(r => r.json()).then(data => setFavorites(Array.isArray(data.favorites) ? data.favorites : [])).catch(() => setFavorites([]));
     fetch("/api/characters").then(r => r.json()).then(data => {
       if (Array.isArray(data.characters)) setCharacters([...data.characters.map(c => ({ ...c, emoji: "✨", color: "violet" })), ...starterCharacters]);
     }).catch(() => {});
@@ -266,6 +269,19 @@ function App() {
   const filtered = useMemo(() => characters.filter(c =>
     `${c.name} ${c.tagline}`.toLowerCase().includes(search.toLowerCase())
   ), [characters, search]);
+
+  async function toggleFavorite(character) {
+    if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para favoritar personagens."); return; }
+    const isFavorite = favorites.some(item => item.id === character.id);
+    const response = await fetch("/api/favorites", {
+      method: isFavorite ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ characterId: character.id })
+    });
+    const data = await response.json();
+    if (!response.ok) { setNotice(data.error || "Não foi possível atualizar os favoritos."); return; }
+    setFavorites(prev => isFavorite ? prev.filter(item => item.id !== character.id) : [character, ...prev]);
+  }
 
   const messages = activeChatId ? (messagesById[activeChatId] || []) : [];
 
@@ -423,6 +439,7 @@ function App() {
           <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
+          <button className={`nav-item ${showFavorites ? "active" : ""}`} onClick={() => { if (!authUser) { setAuthMode("login"); return; } setShowFavorites(true); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false); }}><Heart size={18} /> Meus favoritos <span className="favorite-nav-count">{favorites.length}</span></button>
           <button className={`nav-item ${showProfile ? "active" : ""}`} onClick={openOwnProfile}><Heart size={18} /> Meu perfil</button>
         </nav>
         <div className="sidebar-label">PERSONAGENS POPULARES</div>
@@ -476,6 +493,19 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+          </section>
+        ) : showFavorites ? (
+          <section className="explore-view history-view">
+            <div className="section-heading"><div><div className="eyebrow muted">SUA COLEÇÃO</div><h2>Meus favoritos</h2></div></div>
+            <p className="persona-help">Personagens que você salvou com ❤️. Só você pode ver esta lista.</p>
+            <div className="character-grid">
+              {favorites.map(character => <div className="character-card" key={character.id}>
+                <div className={`card-art violet favorite-card-art`} onClick={() => openCharacter({ ...character, emoji: "✨", color: "violet" })}>{character.avatar_url ? <img className="character-photo" src={character.avatar_url} alt="" /> : <><div className="card-orbit"></div><span>✨</span></>}</div>
+                <button className="favorite-toggle favorited" aria-label="Remover dos favoritos" title="Remover dos favoritos" onClick={() => toggleFavorite(character)}><Heart size={18} fill="currentColor" /></button>
+                <div className="card-info" onClick={() => openCharacter({ ...character, emoji: "✨", color: "violet" })}><div className="card-title">{character.name}</div><p>{character.tagline}</p><div className="card-footer">Começar conversa</div></div>
+              </div>)}
+              {favorites.length === 0 && <div className="empty-state">Você ainda não favoritou nenhum personagem. Explore e toque no coração de um bot!</div>}
+            </div>
           </section>
         ) : showProfile ? (
           <section className="explore-view profile-view">
@@ -535,10 +565,11 @@ function App() {
             </div>
             <div className="character-grid">
               {filtered.map(character => (
-                <button className="character-card" key={character.id} onClick={() => openCharacter(character)}>
-                  <div className={`card-art ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <><div className="card-orbit"></div><span>{character.emoji}</span></>}<div className="card-heart"><Heart size={16} /></div></div>
-                  <div className="card-info"><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="chat-count"><MessageCircle size={12} /> {chatCounts[character.id] || 0} chats</span></div></div>
-                </button>
+                <div className="character-card" key={character.id}>
+                  <div className={`card-art ${character.color}`} onClick={() => openCharacter(character)}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <><div className="card-orbit"></div><span>{character.emoji}</span></>}</div>
+                  <button className={`favorite-toggle ${favorites.some(item => item.id === character.id) ? "favorited" : ""}`} aria-label={favorites.some(item => item.id === character.id) ? "Remover dos favoritos" : "Adicionar aos favoritos"} title={favorites.some(item => item.id === character.id) ? "Remover dos favoritos" : "Adicionar aos favoritos"} onClick={() => toggleFavorite(character)}><Heart size={18} fill={favorites.some(item => item.id === character.id) ? "currentColor" : "none"} /></button>
+                  <div className="card-info" onClick={() => openCharacter(character)}><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="chat-count"><MessageCircle size={12} /> {chatCounts[character.id] || 0} chats</span></div></div>
+                </div>
               ))}
               {filtered.length === 0 && <div className="empty-state">Nenhum personagem encontrado. Tente outra busca.</div>}
             </div>
