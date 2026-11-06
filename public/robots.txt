@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://costa.costaai.workers.dev/sitemap.xml
