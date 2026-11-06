@@ -1,6 +1,11 @@
-name = "costa"
-pages_build_output_dir = "./dist"
+name = "costaai"
+main = "worker/index.js"
 compatibility_date = "2026-11-06"
 
 [ai]
 binding = "AI"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
