@@ -45,6 +45,9 @@ function App() {
   const [characters, setCharacters] = useState(starterCharacters);
   const [selected, setSelected] = useState(null);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [messagesById, setMessagesById] = useState({});
   const [chatCounts, setChatCounts] = useState({});
   const [countedChatIds, setCountedChatIds] = useState(() => new Set());
@@ -114,29 +117,56 @@ function App() {
 
   const messages = activeChatId ? (messagesById[activeChatId] || []) : [];
 
-  function openCharacter(character) {
+  async function startConversation(character) {
     const chatId = crypto.randomUUID();
     setSelected(character);
+    setShowHistory(false);
     setActiveChatId(chatId);
-    setMessagesById(prev => ({
-      ...prev,
-      [chatId]: [{ role: "assistant", content: character.greeting }]
-    }));
+    setMessagesById(prev => ({ ...prev, [chatId]: [{ role: "assistant", content: character.greeting }] }));
     setDraft("");
     setMobileMenu(false);
     setNotice("");
+    if (authUser) {
+      try {
+        const response = await fetch("/api/conversations", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: chatId, characterId: character.id, characterName: character.name, tagline: character.tagline, description: character.description, greeting: character.greeting, avatarUrl: character.avatar_url || character.avatarUrl, emoji: character.emoji, color: character.color })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Não foi possível salvar a conversa.");
+        setHistoryItems(prev => [{ id: chatId, character_id: character.id, character_name: character.name, character_tagline: character.tagline, character_avatar_url: character.avatar_url || character.avatarUrl, character_emoji: character.emoji, character_color: character.color, title: "Nova conversa", updated_at: new Date().toISOString() }, ...prev.filter(item => item.id !== chatId)]);
+      } catch (error) { setNotice(error.message); }
+    } else {
+      setNotice("Entre na sua conta para salvar esta conversa permanentemente.");
+    }
   }
 
-  function startNewConversation() {
-    if (!selected) return;
-    const chatId = crypto.randomUUID();
-    setActiveChatId(chatId);
-    setMessagesById(prev => ({
-      ...prev,
-      [chatId]: [{ role: "assistant", content: selected.greeting }]
-    }));
-    setDraft("");
-    setNotice("");
+  function openCharacter(character) { startConversation(character); }
+  function startNewConversation() { if (selected) startConversation(selected); }
+
+  async function loadHistory() {
+    if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para acessar seu histórico."); return; }
+    setHistoryBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/conversations");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar o histórico.");
+      setHistoryItems(data.conversations || []); setSelected(null); setShowHistory(true); setMobileMenu(false);
+    } catch (error) { setNotice(error.message); }
+    finally { setHistoryBusy(false); }
+  }
+
+  async function resumeConversation(item) {
+    setHistoryBusy(true); setNotice("");
+    try {
+      const response = await fetch(`/api/conversations/${item.id}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível abrir a conversa.");
+      const character = { id: data.conversation.character_id, name: data.conversation.character_name, tagline: data.conversation.character_tagline, description: data.conversation.character_description, greeting: data.conversation.character_greeting, avatar_url: data.conversation.character_avatar_url, emoji: data.conversation.character_emoji || "✨", color: data.conversation.character_color || "violet" };
+      setSelected(character); setActiveChatId(item.id); setMessagesById(prev => ({ ...prev, [item.id]: data.messages || [] }));
+      setShowHistory(false); setDraft(""); setMobileMenu(false);
+    } catch (error) { setNotice(error.message); }
+    finally { setHistoryBusy(false); }
   }
 
   function updateMessages(id, next) {
@@ -147,8 +177,10 @@ function App() {
     event?.preventDefault();
     const content = draft.trim();
     if (!content || !selected || busy) return;
+    const conversationId = activeChatId;
+    const characterForReply = selected;
     const next = [...messages, { role: "user", content }];
-    updateMessages(activeChatId, next);
+    updateMessages(conversationId, next);
     setDraft("");
     setBusy(true);
     setNotice("");
@@ -156,18 +188,19 @@ function App() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ character: selected, messages: next })
+        body: JSON.stringify({ character: characterForReply, messages: next })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erro ao conversar com a IA.");
-      updateMessages(activeChatId, [...next, { role: "assistant", content: data.reply }]);
-      if (!countedChatIds.has(activeChatId)) {
-        setCountedChatIds(prev => new Set([...prev, activeChatId]));
+      updateMessages(conversationId, [...next, { role: "assistant", content: data.reply }]);
+      if (authUser) fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content }, { role: "assistant", content: data.reply }] }) }).catch(() => {});
+      if (!countedChatIds.has(conversationId)) {
+        setCountedChatIds(prev => new Set([...prev, conversationId]));
         fetch("/api/chat-counts", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ characterId: selected.id })
+          body: JSON.stringify({ characterId: characterForReply.id })
         }).then(r => r.json()).then(result => {
-          if (result.chatCount != null) setChatCounts(prev => ({ ...prev, [selected.id]: result.chatCount }));
+          if (result.chatCount != null) setChatCounts(prev => ({ ...prev, [characterForReply.id]: result.chatCount }));
         }).catch(() => {});
       }
     } catch (error) {
@@ -231,7 +264,7 @@ function App() {
         <button className="create-button" onClick={() => setCreating(true)}><Plus size={18} /> Criar personagem</button>
         <nav className="main-nav">
           <button className={!selected ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
-          <button className="nav-item" onClick={() => setNotice("As conversas ficam nesta sessão. Salvamento permanente será adicionado depois.")}><MessageCircle size={18} /> Minhas conversas</button>
+          <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
         </nav>
         <div className="sidebar-label">PERSONAGENS POPULARES</div>
         <div className="side-characters">
@@ -278,6 +311,18 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+          </section>
+        ) : showHistory ? (
+          <section className="explore-view history-view">
+            <div className="section-heading history-heading"><div><div className="eyebrow muted">SEU ESPAÇO</div><h2>Minhas conversas</h2></div><button className="cancel-button" onClick={() => setShowHistory(false)}>Voltar para explorar</button></div>
+            {historyBusy ? <div className="empty-state">Carregando conversas...</div> : historyItems.length === 0 ? <div className="empty-state">Você ainda não tem conversas salvas. Abra um personagem e comece a conversar!</div> : (
+              <div className="history-list">
+                {historyItems.map(item => <button className="history-item" key={item.id} onClick={() => resumeConversation(item)}>
+                  <span className={`avatar small ${item.character_color || "violet"}`}>{item.character_avatar_url ? <img src={item.character_avatar_url} alt="" /> : item.character_emoji || "✨"}</span>
+                  <span className="history-item-copy"><strong>{item.character_name}</strong><span>{item.title || "Nova conversa"}</span><small>{new Date(item.updated_at).toLocaleString("pt-BR")}</small></span><ArrowLeft className="history-open-icon" size={16} />
+                </button>)}
+              </div>
+            )}
           </section>
         ) : (
           <section className="explore-view">
