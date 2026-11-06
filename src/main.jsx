@@ -102,7 +102,8 @@ function App() {
   const [newGreeting, setNewGreeting] = useState("");
   const [newAvatar, setNewAvatar] = useState("");
   const [newVisibility, setNewVisibility] = useState("private");
-  const [characterBusy, setCharacterBusy] = useState(false);\n  const [editingCharacterId, setEditingCharacterId] = useState(null);
+  const [characterBusy, setCharacterBusy] = useState(false);
+  const [editingCharacterId, setEditingCharacterId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [authMode, setAuthMode] = useState(null);
