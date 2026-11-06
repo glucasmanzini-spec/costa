@@ -77,6 +77,8 @@ function App() {
   const [squadDraft, setSquadDraft] = useState("");
   const [squadTopic, setSquadTopic] = useState("");
   const squadAutoRef = useRef(false);
+  const squadMessagesRef = useRef([]);
+  const squadSpeakerRef = useRef(0);
   const [favorites, setFavorites] = useState([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
@@ -311,6 +313,8 @@ function App() {
     setSquadMembers(squadSelection); setSquadMessages(squadTopic.trim()
       ? [{ role: "user", speaker: "Você", content: "Contexto inicial da sala: " + squadTopic.trim() }]
       : []);
+    squadMessagesRef.current = squadTopic.trim() ? [{ role: "user", speaker: "Você", content: "Contexto inicial da sala: " + squadTopic.trim() }] : [];
+    squadSpeakerRef.current = 0;
     setSquadSpeaker(0); setSquadSetup(false); setSquadAuto(false);
   }
 
@@ -318,10 +322,10 @@ function App() {
     if (squadBusy || squadMembers.length < 2) return;
     setSquadBusy(true);
     const currentMessages = userText
-      ? [...squadMessages, { role: "user", speaker: "Você", content: userText }]
-      : squadMessages;
-    if (userText) setSquadMessages(currentMessages);
-    const speakerIndex = squadSpeaker % squadMembers.length;
+      ? [...squadMessagesRef.current, { role: "user", speaker: "Você", content: userText }]
+      : squadMessagesRef.current;
+    if (userText) { squadMessagesRef.current = currentMessages; setSquadMessages(currentMessages); }
+    const speakerIndex = squadSpeakerRef.current % squadMembers.length;
     try {
       const response = await fetch("/api/squad-turn", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -329,8 +333,9 @@ function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar a fala.");
-      setSquadMessages(prev => [...prev, { role: "assistant", speaker: squadMembers[speakerIndex].name, character: squadMembers[speakerIndex], content: data.reply }]);
-      setSquadSpeaker((speakerIndex + 1) % squadMembers.length);
+      const nextMessages = [...currentMessages, { role: "assistant", speaker: squadMembers[speakerIndex].name, character: squadMembers[speakerIndex], content: data.reply }];
+      squadMessagesRef.current = nextMessages; setSquadMessages(nextMessages);
+      squadSpeakerRef.current = (speakerIndex + 1) % squadMembers.length; setSquadSpeaker(squadSpeakerRef.current);
     } catch (error) { setNotice(error.message); setSquadAuto(false); }
     finally { setSquadBusy(false); }
   }
