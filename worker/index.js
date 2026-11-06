@@ -69,7 +69,7 @@ async function ensureProfileSchema(env) {
   )`).run();
   const users = await env.DB.prepare("SELECT id, display_name FROM users WHERE id NOT IN (SELECT user_id FROM user_profiles)").all();
   for (const account of users.results || []) {
-    const base = String(account.display_name || "usuario").normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 18) || "usuario";
+    const base = String(account.display_name || "usuario").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 18) || "usuario";
     const username = base + "_" + String(account.id).replace(/-/g, "").slice(0, 6).toLowerCase();
     await env.DB.prepare("INSERT OR IGNORE INTO user_profiles (user_id, username) VALUES (?, ?)").bind(account.id, username).run();
   }
@@ -177,7 +177,7 @@ async function profileRoutes(request, env, url) {
     if (displayName.length < 2 || displayName.length > 50) return json({ error: "O nome precisa ter entre 2 e 50 caracteres." }, 400);
     if (!/^[a-z0-9_]{3,20}$/.test(username)) return json({ error: "O @usuário deve ter 3 a 20 caracteres: letras, números e _." }, 400);
     if (bio.length > 240) return json({ error: "A biografia pode ter no máximo 240 caracteres." }, 400);
-    if (avatarUrl && (!/^data:image\\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A foto precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
+    if (avatarUrl && (!/^data:image\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A foto precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
     const taken = await env.DB.prepare("SELECT user_id FROM user_profiles WHERE username = ? AND user_id != ?").bind(username, user.id).first();
     if (taken) return json({ error: "Esse @usuário já está em uso." }, 409);
     await env.DB.prepare("UPDATE users SET display_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").bind(displayName, user.id).run();
