@@ -126,6 +126,7 @@ function App() {
     setDraft("");
     setMobileMenu(false);
     setNotice("");
+    if (authUser) setBusy(true);
     if (authUser) {
       try {
         const response = await fetch("/api/conversations", {
@@ -136,6 +137,7 @@ function App() {
         if (!response.ok) throw new Error(data.error || "Não foi possível salvar a conversa.");
         setHistoryItems(prev => [{ id: chatId, character_id: character.id, character_name: character.name, character_tagline: character.tagline, character_avatar_url: character.avatar_url || character.avatarUrl, character_emoji: character.emoji, character_color: character.color, title: "Nova conversa", updated_at: new Date().toISOString() }, ...prev.filter(item => item.id !== chatId)]);
       } catch (error) { setNotice(error.message); }
+      finally { setBusy(false); }
     } else {
       setNotice("Entre na sua conta para salvar esta conversa permanentemente.");
     }
@@ -193,7 +195,10 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erro ao conversar com a IA.");
       updateMessages(conversationId, [...next, { role: "assistant", content: data.reply }]);
-      if (authUser) fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content }, { role: "assistant", content: data.reply }] }) }).catch(() => {});
+      if (authUser) {
+        const saved = await fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content }, { role: "assistant", content: data.reply }] }) });
+        if (!saved.ok) setNotice("A resposta chegou, mas não foi possível salvá-la no histórico. Tente novamente.");
+      }
       if (!countedChatIds.has(conversationId)) {
         setCountedChatIds(prev => new Set([...prev, conversationId]));
         fetch("/api/chat-counts", {
@@ -292,8 +297,8 @@ function App() {
               <button className="back-button" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Voltar</button>
               <div className={`avatar large ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>
               <h1>{selected.name}</h1><p>{selected.tagline}</p>
-              <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>Conversa privada nesta sessão</span></div>
-              <button className="new-chat-button" onClick={startNewConversation}><Plus size={15} /> Nova conversa</button>
+              <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>{authUser ? "Histórico salvo na sua conta" : "Conversa não salva"}</span></div>
+              <button className="new-chat-button" onClick={startNewConversation} disabled={busy}><Plus size={15} /> Nova conversa</button>
             </div>
             <div className="messages-area">
               {messages.map((message, index) => (
