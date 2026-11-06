@@ -95,6 +95,17 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [viewedProfile, setViewedProfile] = useState(null);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileUsername, setProfileUsername] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profileAvatar, setProfileAvatar] = useState("");
+  const [profileSearch, setProfileSearch] = useState("");
+  const [profileResults, setProfileResults] = useState([]);
+  const [profileBusy, setProfileBusy] = useState(false);
 
   useEffect(() => {
     if (!authUser) { setPersonas([]); setActivePersonaId(""); return; }
@@ -131,6 +142,90 @@ function App() {
   function openPersonas() {
     if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para criar e gerenciar personas."); return; }
     setShowHistory(false); setShowPersonas(true); setSelected(null); setMobileMenu(false);
+  }
+
+  async function openOwnProfile() {
+    if (!authUser) { setAuthMode("login"); return; }
+    setProfileBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/profile");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar seu perfil.");
+      setProfileData(data.profile); setViewedProfile(null);
+      setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
+    } catch (error) { setNotice(error.message); }
+    finally { setProfileBusy(false); }
+  }
+
+  async function openUserProfile(username) {
+    if (!authUser) { setAuthMode("login"); return; }
+    setProfileBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/users?username=" + encodeURIComponent(username));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Perfil não encontrado.");
+      setViewedProfile(data.profile); setShowProfile(true); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false);
+    } catch (error) { setNotice(error.message); }
+    finally { setProfileBusy(false); }
+  }
+
+  async function searchProfiles(value) {
+    setProfileSearch(value);
+    if (value.trim().length < 2) { setProfileResults([]); return; }
+    try {
+      const response = await fetch("/api/users?search=" + encodeURIComponent(value.trim()));
+      const data = await response.json();
+      if (response.ok) setProfileResults(data.users || []);
+    } catch {}
+  }
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    if (profileBusy) return;
+    setProfileBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: profileName, username: profileUsername, bio: profileBio, avatarUrl: profileAvatar || null })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o perfil.");
+      setProfileData(data.profile);
+      setAuthUser(prev => ({ ...prev, display_name: data.profile.display_name, username: data.profile.username, bio: data.profile.bio, avatar_url: data.profile.avatar_url }));
+      setEditingProfile(false);
+    } catch (error) { setNotice(error.message); }
+    finally { setProfileBusy(false); }
+  }
+
+  async function chooseProfileAvatar(file) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setNotice("Escolha uma imagem JPG, PNG ou WebP."); return; }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file);
+      });
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+        canvas.width = Math.max(1, Math.round(image.width * scale)); canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.78);
+        if (compressed.length > 700000) { setNotice("Essa imagem ficou muito grande. Escolha outra."); return; }
+        setProfileAvatar(compressed); setNotice("");
+      };
+      image.onerror = () => setNotice("Não foi possível abrir essa imagem.");
+      image.src = dataUrl;
+    } catch { setNotice("Não foi possível carregar essa imagem."); }
+  }
+
+  function beginProfileEdit() {
+    const p = profileData || authUser || {};
+    setProfileName(p.display_name || "");
+    setProfileUsername(p.username || "");
+    setProfileBio(p.bio || "");
+    setProfileAvatar(p.avatar_url || "");
+    setEditingProfile(true); setNotice("");
   }
 
   async function submitAuth(event) {
@@ -323,6 +418,7 @@ function App() {
           <button className={!selected ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
+          <button className={`nav-item ${showProfile ? "active" : ""}`} onClick={openOwnProfile}><Heart size={18} /> Meu perfil</button>
         </nav>
         <div className="sidebar-label">PERSONAGENS POPULARES</div>
         <div className="side-characters">
@@ -333,7 +429,7 @@ function App() {
           ))}
         </div>
         <div className="sidebar-bottom">
-          <div className="profile-mini"><div className="profile-avatar">{(authUser?.display_name || "C").slice(0,1).toUpperCase()}</div><div><strong>{authUser?.display_name || "Visitante"}</strong><span>{authUser?.email || "Sem login"}</span></div></div>
+          <button className="profile-mini profile-mini-button" onClick={openOwnProfile}><div className="profile-avatar">{authUser?.avatar_url ? <img src={authUser.avatar_url} alt="" /> : (authUser?.display_name || "C").slice(0,1).toUpperCase()}</div><div><strong>{authUser?.display_name || "Visitante"}</strong><span>{authUser?.username ? "@" + authUser.username : authUser?.email || "Sem login"}</span></div></button>
           {authUser ? <button className="icon-button" title="Sair" onClick={logout}>Sair</button> : <button className="icon-button" title="Entrar" onClick={() => setAuthMode("login")}>Entrar</button>}
         </div>
       </aside>
@@ -342,7 +438,7 @@ function App() {
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMobileMenu(true)} aria-label="Abrir menu"><Menu /></button>
           <div className="breadcrumb">{selected ? <><button onClick={() => setSelected(null)}>Explorar</button><span>/</span><strong>{selected.name}</strong></> : <strong>Explorar personagens</strong>}</div>
-          <div className="top-actions"><span className="beta-pill">BETA</span>{authUser ? <button className="top-avatar" title={authUser.email}>{(authUser.display_name || "C").slice(0,1).toUpperCase()}</button> : <button className="top-login" onClick={() => setAuthMode("login")}>Entrar</button>}</div>
+          <div className="top-actions"><span className="beta-pill">BETA</span>{authUser ? <button className="top-avatar" title="Meu perfil" onClick={openOwnProfile}>{authUser.avatar_url ? <img src={authUser.avatar_url} alt="" /> : (authUser.display_name || "C").slice(0,1).toUpperCase()}</button> : <button className="top-login" onClick={() => setAuthMode("login")}>Entrar</button>}</div>
         </header>
         {selected ? (
           <section className="chat-view">
@@ -375,6 +471,26 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+          </section>
+        ) : showProfile ? (
+          <section className="explore-view profile-view">
+            <div className="section-heading history-heading"><div><div className="eyebrow muted">COMUNIDADE COSTA</div><h2>{viewedProfile ? "Perfil de usuário" : "Meu perfil"}</h2></div>{!viewedProfile && <button className="hero-button" onClick={beginProfileEdit}>Editar perfil</button>}</div>
+            {!viewedProfile && <div className="profile-discover"><div className="search-box"><Search size={17} /><input value={profileSearch} onChange={e => searchProfiles(e.target.value)} placeholder="Buscar pessoas por nome ou @usuário..." /></div>
+              {profileResults.length > 0 && <div className="profile-results">{profileResults.map(person => <button className="profile-result" key={person.username} onClick={() => { setProfileSearch(""); setProfileResults([]); openUserProfile(person.username); }}><span className="profile-avatar">{person.avatar_url ? <img src={person.avatar_url} alt="" /> : person.display_name.slice(0,1).toUpperCase()}</span><span><strong>{person.display_name}</strong><small>@{person.username}</small></span></button>)}</div>}
+            </div>}
+            {profileBusy && <div className="empty-state">Carregando perfil...</div>}
+            {(viewedProfile || profileData) && <div className="user-profile-card">
+              <div className="user-profile-cover"></div>
+              <div className="user-profile-main">
+                <div className="user-profile-avatar">{(viewedProfile || profileData).avatar_url ? <img src={(viewedProfile || profileData).avatar_url} alt="" /> : (viewedProfile || profileData).display_name.slice(0,1).toUpperCase()}</div>
+                <h1>{(viewedProfile || profileData).display_name}</h1>
+                <div className="user-profile-handle">@{(viewedProfile || profileData).username}</div>
+                <p>{(viewedProfile || profileData).bio || "Este usuário ainda não adicionou uma biografia."}</p>
+                <div className="profile-stats"><div><strong>{(viewedProfile || profileData).characters_count ?? "—"}</strong><span>Personagens públicos</span></div>{viewedProfile && <div><strong>{viewedProfile.conversations_count ?? 0}</strong><span>Conversas</span></div>}<div><strong>{new Date((viewedProfile || profileData).created_at || Date.now()).toLocaleDateString("pt-BR")}</strong><span>No Costa desde</span></div></div>
+                {viewedProfile && <button className="cancel-button" onClick={() => { setViewedProfile(null); setProfileResults([]); }}>Voltar ao meu perfil</button>}
+              </div>
+            </div>}
+            {notice && <div className="notice">{notice}</div>}
           </section>
         ) : showPersonas ? (
           <section className="explore-view history-view">
@@ -431,6 +547,18 @@ function App() {
           <label>Descrição<textarea value={personaDescription} onChange={e => setPersonaDescription(e.target.value)} placeholder="Descreva quem você é nessa conversa, sua personalidade, história e como o personagem deve te enxergar..." rows={5} maxLength={1200} required /></label>
           {notice && <div className="notice">{notice}</div>}
           <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCreatingPersona(false)}>Cancelar</button><button className="hero-button" type="submit" disabled={personaBusy}>{personaBusy ? "Salvando..." : "Criar persona"} <Sparkles size={16} /></button></div>
+        </form>
+      </div>}
+      {editingProfile && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setEditingProfile(false); }}>
+        <form className="create-modal" onSubmit={saveProfile}>
+          <div className="modal-top"><div><div className="eyebrow">SUA CONTA COSTA</div><h2>Editar perfil</h2></div><button type="button" className="icon-button" onClick={() => setEditingProfile(false)}><X /></button></div>
+          <label>Foto de perfil<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseProfileAvatar(e.target.files?.[0])} /></label>
+          {profileAvatar && <div className="avatar-preview"><img src={profileAvatar} alt="Prévia da foto" /><button type="button" className="cancel-button" onClick={() => setProfileAvatar("")}>Remover foto</button></div>}
+          <label>Nome de exibição<input value={profileName} onChange={e => setProfileName(e.target.value)} minLength={2} maxLength={50} required /></label>
+          <label>@Usuário<input value={profileUsername} onChange={e => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} minLength={3} maxLength={20} required /><small className="field-help">3–20 caracteres: letras sem acento, números e _.</small></label>
+          <label>Biografia<textarea value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Conte um pouco sobre você..." rows={4} maxLength={240} /><small className="field-help">{profileBio.length}/240</small></label>
+          {notice && <div className="notice">{notice}</div>}
+          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setEditingProfile(false)}>Cancelar</button><button className="hero-button" type="submit" disabled={profileBusy}>{profileBusy ? "Salvando..." : "Salvar perfil"}</button></div>
         </form>
       </div>}
       {authMode && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}>
