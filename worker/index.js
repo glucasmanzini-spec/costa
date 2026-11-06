@@ -414,7 +414,7 @@ async function characterCommentRoutes(request, env, url) {
     const imageUrl = typeof body.image_url === "string" ? body.image_url : "";
     const parentId = typeof body.parent_id === "string" ? body.parent_id : null;
     if ((!content && !imageUrl) || content.length > 500) return json({ error: "Escreva até 500 caracteres ou anexe uma imagem." }, 400);
-    if (imageUrl && (!/^data:image\\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(imageUrl) || imageUrl.length > 1400000)) return json({ error: "A imagem deve ser PNG, JPG, WEBP ou GIF e ter no máximo 1 MB." }, 400);
+    if (imageUrl && (!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(imageUrl) || imageUrl.length > 1400000)) return json({ error: "A imagem deve ser PNG, JPG, WEBP ou GIF e ter no máximo 1 MB." }, 400);
     if (parentId) {
       const parent = await env.DB.prepare("SELECT id FROM character_comments WHERE id = ? AND character_id = ? AND parent_id IS NULL").bind(parentId, characterId).first();
       if (!parent) return json({ error: "Comentário original não encontrado." }, 404);
