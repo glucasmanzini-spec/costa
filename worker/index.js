@@ -1,6 +1,6 @@
 const MODEL = "@cf/ibm-granite/granite-4.0-h-micro";
 const SESSION_DAYS = 30;
-const PBKDF2_ITERATIONS = 210000;
+const PBKDF2_ITERATIONS = 100000;
 
 function json(data, status = 200, headers = {}) {
   return Response.json(data, { status, headers });
@@ -31,7 +31,7 @@ async function verifyPassword(password, stored) {
   const [scheme, iterationsText, saltText, expectedText] = String(stored).split("$");
   if (scheme !== "pbkdf2") return false;
   const iterations = Number(iterationsText);
-  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) return false;
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 100000) return false;
   const salt = base64UrlToBytes(saltText);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = new Uint8Array(await crypto.subtle.deriveBits(
