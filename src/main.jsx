@@ -48,6 +48,13 @@ function App() {
   const [historyItems, setHistoryItems] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [personas, setPersonas] = useState([]);
+  const [activePersonaId, setActivePersonaId] = useState("");
+  const [showPersonas, setShowPersonas] = useState(false);
+  const [creatingPersona, setCreatingPersona] = useState(false);
+  const [personaName, setPersonaName] = useState("");
+  const [personaDescription, setPersonaDescription] = useState("");
+  const [personaBusy, setPersonaBusy] = useState(false);
   const [messagesById, setMessagesById] = useState({});
   const [chatCounts, setChatCounts] = useState({});
   const [countedChatIds, setCountedChatIds] = useState(() => new Set());
@@ -72,6 +79,13 @@ function App() {
   const [authBusy, setAuthBusy] = useState(false);
 
   useEffect(() => {
+    if (!authUser) { setPersonas([]); setActivePersonaId(""); return; }
+    fetch("/api/personas").then(r => r.json()).then(data => {
+      if (Array.isArray(data.personas)) setPersonas(data.personas);
+    }).catch(() => {});
+  }, [authUser]);
+
+  useEffect(() => {
     fetch("/api/chat-counts").then(r => r.json()).then(data => {
       if (Array.isArray(data.counts)) setChatCounts(Object.fromEntries(data.counts.map(item => [item.character_id, Number(item.chat_count) || 0])));
     }).catch(() => {});
@@ -80,6 +94,26 @@ function App() {
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(data => setAuthUser(data.user || null)).catch(() => {});
   }, []);
+
+  async function createPersona(event) {
+    event.preventDefault();
+    if (!authUser) { setCreatingPersona(false); setAuthMode("login"); setNotice("Entre na sua conta para criar personas."); return; }
+    if (personaBusy) return;
+    setPersonaBusy(true); setNotice("");
+    try {
+      const response = await fetch("/api/personas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: personaName, description: personaDescription }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível criar a persona.");
+      setPersonas(prev => [data.persona, ...prev]); setActivePersonaId(data.persona.id);
+      setPersonaName(""); setPersonaDescription(""); setCreatingPersona(false); setShowPersonas(true);
+    } catch (error) { setNotice(error.message); }
+    finally { setPersonaBusy(false); }
+  }
+
+  function openPersonas() {
+    if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para criar e gerenciar personas."); return; }
+    setShowHistory(false); setShowPersonas(true); setSelected(null); setMobileMenu(false);
+  }
 
   async function submitAuth(event) {
     event.preventDefault();
@@ -190,7 +224,7 @@ function App() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ character: characterForReply, messages: next })
+        body: JSON.stringify({ character: characterForReply, persona: personas.find(p => p.id === activePersonaId) || null, messages: next })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erro ao conversar com a IA.");
@@ -270,6 +304,7 @@ function App() {
         <nav className="main-nav">
           <button className={!selected ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
+          <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
         </nav>
         <div className="sidebar-label">PERSONAGENS POPULARES</div>
         <div className="side-characters">
@@ -299,6 +334,12 @@ function App() {
               <h1>{selected.name}</h1><p>{selected.tagline}</p>
               <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>{authUser ? "Histórico salvo na sua conta" : "Conversa não salva"}</span></div>
               <button className="new-chat-button" onClick={startNewConversation} disabled={busy}><Plus size={15} /> Nova conversa</button>
+              <label className="persona-selector">Conversar como
+                <select value={activePersonaId} onChange={e => setActivePersonaId(e.target.value)}>
+                  <option value="">Eu mesmo (sem persona)</option>
+                  {personas.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
+                </select>
+              </label>
             </div>
             <div className="messages-area">
               {messages.map((message, index) => (
@@ -316,6 +357,14 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+          </section>
+        ) : showPersonas ? (
+          <section className="explore-view history-view">
+            <div className="section-heading history-heading"><div><div className="eyebrow muted">SUA IDENTIDADE NAS CONVERSAS</div><h2>Minhas personas</h2></div><button className="hero-button" onClick={() => { setPersonaName(""); setPersonaDescription(""); setCreatingPersona(true); }}><Plus size={16} /> Criar persona</button></div>
+            <p className="persona-help">Crie identidades diferentes para usar nas conversas. Cada persona tem seu próprio nome e descrição.</p>
+            {personas.length === 0 ? <div className="empty-state">Você ainda não criou nenhuma persona.</div> : <div className="persona-grid">
+              {personas.map(persona => <div className="persona-card" key={persona.id}><div className="persona-card-icon"><Sparkles size={19} /></div><strong>{persona.name}</strong><p>{persona.description}</p><button className={activePersonaId === persona.id ? "persona-active" : "cancel-button"} onClick={() => setActivePersonaId(persona.id)}>{activePersonaId === persona.id ? "Selecionada" : "Usar nas conversas"}</button></div>)}
+            </div>}
           </section>
         ) : showHistory ? (
           <section className="explore-view history-view">
@@ -357,6 +406,15 @@ function App() {
           </section>
         )}
       </main>
+      {creatingPersona && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setCreatingPersona(false); }}>
+        <form className="create-modal" onSubmit={createPersona}>
+          <div className="modal-top"><div><div className="eyebrow">NOVA PERSONA</div><h2>Crie sua identidade</h2></div><button type="button" className="icon-button" onClick={() => setCreatingPersona(false)}><X /></button></div>
+          <label>Nome da persona<input value={personaName} onChange={e => setPersonaName(e.target.value)} placeholder="Ex.: Alex, aventureiro..." maxLength={40} required /></label>
+          <label>Descrição<textarea value={personaDescription} onChange={e => setPersonaDescription(e.target.value)} placeholder="Descreva quem você é nessa conversa, sua personalidade, história e como o personagem deve te enxergar..." rows={5} maxLength={1200} required /></label>
+          {notice && <div className="notice">{notice}</div>}
+          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCreatingPersona(false)}>Cancelar</button><button className="hero-button" type="submit" disabled={personaBusy}>{personaBusy ? "Salvando..." : "Criar persona"} <Sparkles size={16} /></button></div>
+        </form>
+      </div>}
       {authMode && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}>
         <form className="create-modal" onSubmit={submitAuth}>
           <div className="modal-top"><div><div className="eyebrow">SUA CONTA COSTA</div><h2>{authMode === "register" ? "Criar sua conta" : "Bem-vindo de volta"}</h2></div><button type="button" className="icon-button" onClick={() => setAuthMode(null)}><X /></button></div>
