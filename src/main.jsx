@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Search, Plus, Compass, MessageCircle, Settings, Sparkles, Send, Users,
@@ -76,6 +76,7 @@ function App() {
   const [squadSpeaker, setSquadSpeaker] = useState(0);
   const [squadDraft, setSquadDraft] = useState("");
   const [squadTopic, setSquadTopic] = useState("");
+  const squadAutoRef = useRef(false);
   const [favorites, setFavorites] = useState([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
@@ -296,7 +297,7 @@ function App() {
 
   function openSquadSetup() {
     setSelected(null); setShowHistory(false); setShowFavorites(false); setShowProfile(false); setShowPersonas(false);
-    setShowSquad(true); setSquadSetup(true); setSquadAuto(false); setSquadSelection([]); setSquadMessages([]); setMobileMenu(false);
+    setShowSquad(true); setSquadSetup(true); setSquadAuto(false); squadAutoRef.current = false; setSquadSelection([]); setSquadMessages([]); setMobileMenu(false);
   }
 
   function toggleSquadSelection(character) {
@@ -336,15 +337,13 @@ function App() {
 
   async function runSquadAuto() {
     if (squadBusy) return;
-    setSquadAuto(true);
-    for (let turn = 0; turn < 20; turn++) {
-      if (!squadAuto && turn > 0) break;
-      await new Promise(resolve => setTimeout(resolve, turn === 0 ? 0 : 900));
-      if (!squadAuto && turn > 0) break;
+    squadAutoRef.current = true; setSquadAuto(true);
+    for (let turn = 0; turn < 20 && squadAutoRef.current; turn++) {
+      if (turn > 0) await new Promise(resolve => setTimeout(resolve, 1100));
+      if (!squadAutoRef.current) break;
       await squadNextTurn();
-      if (!squadAuto) break;
     }
-    setSquadAuto(false);
+    squadAutoRef.current = false; setSquadAuto(false);
   }
 
   function sendSquadMessage(event) {
@@ -508,7 +507,7 @@ function App() {
         </div>
         <button className="create-button" onClick={() => setCreating(true)}><Plus size={18} /> Criar personagem</button>
         <nav className="main-nav">
-          <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowFavorites(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
+          <button className={!selected && !showProfile && !showHistory && !showPersonas && !showSquad ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowFavorites(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showSquad ? "active" : ""}`} onClick={openSquadSetup}><Users size={18} /> Costa Squad</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
@@ -565,7 +564,7 @@ function App() {
               {notice && <div className="notice">{notice}</div>}
               <div className="squad-controls">
                 <button className="cancel-button" disabled={squadBusy} onClick={() => squadNextTurn()}>Próxima fala</button>
-                <button className="hero-button" disabled={squadBusy} onClick={() => { if (squadAuto) setSquadAuto(false); else runSquadAuto(); }}>{squadAuto ? "Pausar conversa" : "▶ Conversar automaticamente"}</button>
+                <button className="hero-button" disabled={squadBusy} onClick={() => { if (squadAuto) { squadAutoRef.current = false; setSquadAuto(false); } else runSquadAuto(); }}>{squadAuto ? "Pausar conversa" : "▶ Conversar automaticamente"}</button>
               </div>
               <form className="composer" onSubmit={sendSquadMessage}><input value={squadDraft} onChange={e => setSquadDraft(e.target.value)} placeholder="Entre na conversa..." /><button className="send-button" type="submit" disabled={!squadDraft.trim() || squadBusy}><Send size={18} /></button></form>
               <p className="disclaimer">Os personagens falam em rodízio. Você pode assistir ou participar a qualquer momento.</p>
