@@ -1,0 +1,6 @@
+name = "costa"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-11-06"
+
+[ai]
+binding = "AI"
