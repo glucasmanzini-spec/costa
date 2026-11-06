@@ -41,6 +41,21 @@ const starterCharacters = [
   }
 ];
 
+function renderMessageContent(content) {
+  const parts = String(content ?? "").split(/(\\*\\*[^*]+\\*\\*|\\*[^*]+\\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      return <em key={index}>{part.slice(1, -1)}</em>;
+    }
+    return part.split("\\n").map((line, lineIndex) => (
+      <React.Fragment key={`${index}-${lineIndex}`}>{lineIndex > 0 && <br />}{line}</React.Fragment>
+    ));
+  });
+}
+
 function App() {
   const [characters, setCharacters] = useState(starterCharacters);
   const [selected, setSelected] = useState(null);
@@ -345,7 +360,7 @@ function App() {
               {messages.map((message, index) => (
                 <div className={`message-row ${message.role}`} key={index}>
                   {message.role === "assistant" && <div className={`avatar message-avatar ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>}
-                  <div className="message-bubble">{message.content}</div>
+                  <div className="message-bubble">{renderMessageContent(message.content)}</div>
                 </div>
               ))}
               {busy && <div className="message-row assistant"><div className={`avatar message-avatar ${selected.color}`}>{selected.emoji}</div><div className="message-bubble typing"><i></i><i></i><i></i></div></div>}
