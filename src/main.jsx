@@ -43,21 +43,16 @@ const starterCharacters = [
 
 function renderMessageContent(content) {
   const text = String(content ?? "");
-  const tokenPattern = /(\\*\\*.*?\\*\\*|\\*.*?\\*)/gs;
+  const tokenPattern = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
   const nodes = [];
   let lastIndex = 0;
   let match;
   let key = 0;
   while ((match = tokenPattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(<React.Fragment key={key++}>{text.slice(lastIndex, match.index)}</React.Fragment>);
-    }
+    if (match.index > lastIndex) nodes.push(<React.Fragment key={key++}>{text.slice(lastIndex, match.index)}</React.Fragment>);
     const token = match[0];
-    if (token.startsWith("**")) {
-      nodes.push(<strong key={key++} style={{ fontWeight: 800, fontStyle: "normal" }}>{token.slice(2, -2)}</strong>);
-    } else {
-      nodes.push(<em key={key++} style={{ fontStyle: "italic" }}>{token.slice(1, -1)}</em>);
-    }
+    if (token.startsWith("**")) nodes.push(<strong key={key++}>{token.slice(2, -2)}</strong>);
+    else nodes.push(<em key={key++}>{token.slice(1, -1)}</em>);
     lastIndex = match.index + token.length;
   }
   if (lastIndex < text.length) nodes.push(<React.Fragment key={key++}>{text.slice(lastIndex)}</React.Fragment>);
