@@ -490,6 +490,7 @@ function App() {
                 {viewedProfile && <button className="cancel-button" onClick={() => { setViewedProfile(null); setProfileResults([]); }}>Voltar ao meu perfil</button>}
               </div>
             </div>}
+            {(viewedProfile || profileData)?.characters?.length > 0 && <div className="profile-character-section"><div className="section-heading"><div><div className="eyebrow muted">CRIAÇÕES</div><h2>Personagens públicos</h2></div></div><div className="character-grid">{(viewedProfile || profileData).characters.map(character => <button className="character-card" key={character.id} onClick={() => openCharacter({ ...character, description: "", greeting: "Olá! Sobre o que vamos conversar?", emoji: "✨", color: "violet" })}><div className="card-art violet">{character.avatar_url ? <img className="character-photo" src={character.avatar_url} alt="" /> : <span>✨</span>}</div><div className="card-info"><div className="card-title">{character.name}</div><p>{character.tagline}</p><div className="card-footer">Começar conversa</div></div></button>)}</div></div>}
             {notice && <div className="notice">{notice}</div>}
           </section>
         ) : showPersonas ? (
