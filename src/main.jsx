@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Search, Plus, Compass, MessageCircle, Settings, Sparkles, Send,
@@ -53,6 +53,39 @@ function App() {
   const [newDescription, setNewDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [authMode, setAuthMode] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me").then(r => r.json()).then(data => setAuthUser(data.user || null)).catch(() => {});
+  }, []);
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    if (authBusy) return;
+    setAuthBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch(authMode === "register" ? "/api/auth/register" : "/api/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail, password: authPassword, displayName: authName })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível entrar.");
+      setAuthUser(data.user);
+      setAuthMode(null); setAuthPassword(""); setAuthEmail(""); setAuthName("");
+    } catch (error) { setNotice(error.message); }
+    finally { setAuthBusy(false); }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setAuthUser(null);
+  }
 
   const filtered = useMemo(() => characters.filter(c =>
     `${c.name} ${c.tagline}`.toLowerCase().includes(search.toLowerCase())
@@ -141,8 +174,8 @@ function App() {
           ))}
         </div>
         <div className="sidebar-bottom">
-          <div className="profile-mini"><div className="profile-avatar">C</div><div><strong>Visitante</strong><span>Conta local</span></div></div>
-          <button className="icon-button" title="Configurações" onClick={() => setNotice("Configurações de conta serão adicionadas em uma próxima etapa.")}><Settings size={18} /></button>
+          <div className="profile-mini"><div className="profile-avatar">{(authUser?.display_name || "C").slice(0,1).toUpperCase()}</div><div><strong>{authUser?.display_name || "Visitante"}</strong><span>{authUser?.email || "Sem login"}</span></div></div>
+          {authUser ? <button className="icon-button" title="Sair" onClick={logout}>Sair</button> : <button className="icon-button" title="Entrar" onClick={() => setAuthMode("login")}>Entrar</button>}
         </div>
       </aside>
       {mobileMenu && <button className="scrim" onClick={() => setMobileMenu(false)} aria-label="Fechar menu" />}
@@ -150,7 +183,7 @@ function App() {
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMobileMenu(true)} aria-label="Abrir menu"><Menu /></button>
           <div className="breadcrumb">{selected ? <><button onClick={() => setSelected(null)}>Explorar</button><span>/</span><strong>{selected.name}</strong></> : <strong>Explorar personagens</strong>}</div>
-          <div className="top-actions"><span className="beta-pill">BETA</span><button className="top-avatar">C</button></div>
+          <div className="top-actions"><span className="beta-pill">BETA</span>{authUser ? <button className="top-avatar" title={authUser.email}>{(authUser.display_name || "C").slice(0,1).toUpperCase()}</button> : <button className="top-login" onClick={() => setAuthMode("login")}>Entrar</button>}</div>
         </header>
         {selected ? (
           <section className="chat-view">
@@ -205,6 +238,16 @@ function App() {
           </section>
         )}
       </main>
+      {authMode && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setAuthMode(null); }}>
+        <form className="create-modal" onSubmit={submitAuth}>
+          <div className="modal-top"><div><div className="eyebrow">SUA CONTA COSTA</div><h2>{authMode === "register" ? "Criar sua conta" : "Bem-vindo de volta"}</h2></div><button type="button" className="icon-button" onClick={() => setAuthMode(null)}><X /></button></div>
+          {authMode === "register" && <label>Como podemos te chamar?<input value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Seu nome" minLength={2} maxLength={50} required /></label>}
+          <label>E-mail<input type="email" autoComplete="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="voce@exemplo.com" maxLength={254} required /></label>
+          <label>Senha<input type="password" autoComplete={authMode === "register" ? "new-password" : "current-password"} value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder={authMode === "register" ? "Mínimo de 10 caracteres" : "Sua senha"} minLength={authMode === "register" ? 10 : 1} maxLength={128} required /></label>
+          {notice && <div className="notice">{notice}</div>}
+          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}>{authMode === "register" ? "Já tenho conta" : "Criar conta"}</button><button className="hero-button" type="submit" disabled={authBusy}>{authBusy ? "Aguarde..." : authMode === "register" ? "Cadastrar" : "Entrar"}</button></div>
+        </form>
+      </div>}
       {creating && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setCreating(false); }}>
         <form className="create-modal" onSubmit={createCharacter}>
           <div className="modal-top"><div><div className="eyebrow">PERSONAGEM NOVO</div><h2>Crie alguém especial</h2></div><button type="button" className="icon-button" onClick={() => setCreating(false)}><X /></button></div>
