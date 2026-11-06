@@ -36,3 +36,6 @@
 @media(max-width:680px){.profile-view{padding:22px 15px}.user-profile-cover{height:110px}.user-profile-main{padding:0 18px 22px}.user-profile-avatar{width:88px;height:88px;border-radius:27px;margin-top:-45px}.user-profile-main h1{font-size:22px}.profile-stats{gap:18px}}
 
 .profile-character-section{max-width:900px;margin-top:32px}.profile-character-section .section-heading{margin:25px 0 15px}.profile-character-section .character-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+
+/* Custom profile cover */
+.user-profile-cover{background-size:cover;background-position:center;background-repeat:no-repeat}.profile-cover-preview img{width:150px;height:76px;object-fit:cover;border-radius:12px}
