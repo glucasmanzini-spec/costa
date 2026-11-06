@@ -42,7 +42,7 @@ const starterCharacters = [
 ];
 
 function renderMessageContent(content) {
-  const parts = String(content ?? "").split(/(\\*\\*[^*]+\\*\\*|\\*[^*]+\\*)/g);
+  const parts = String(content ?? "").split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return <strong key={index}>{part.slice(2, -2)}</strong>;
@@ -50,8 +50,8 @@ function renderMessageContent(content) {
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return <em key={index}>{part.slice(1, -1)}</em>;
     }
-    return part.split("\\n").map((line, lineIndex) => (
-      <React.Fragment key={`${index}-${lineIndex}`}>{lineIndex > 0 && <br />}{line}</React.Fragment>
+    return part.split("\n").map((line, lineIndex) => (
+      <React.Fragment key={index + "-" + lineIndex}>{lineIndex > 0 && <br />}{line}</React.Fragment>
     ));
   });
 }
