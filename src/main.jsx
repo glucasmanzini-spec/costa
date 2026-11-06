@@ -103,6 +103,7 @@ function App() {
   const [profileUsername, setProfileUsername] = useState("");
   const [profileBio, setProfileBio] = useState("");
   const [profileAvatar, setProfileAvatar] = useState("");
+  const [profileCover, setProfileCover] = useState("");
   const [profileSearch, setProfileSearch] = useState("");
   const [profileResults, setProfileResults] = useState([]);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -186,7 +187,7 @@ function App() {
     try {
       const response = await fetch("/api/profile", {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: profileName, username: profileUsername, bio: profileBio, avatarUrl: profileAvatar || null })
+        body: JSON.stringify({ displayName: profileName, username: profileUsername, bio: profileBio, avatarUrl: profileAvatar || null, coverUrl: profileCover || null })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar o perfil.");
@@ -197,7 +198,7 @@ function App() {
     finally { setProfileBusy(false); }
   }
 
-  async function chooseProfileAvatar(file) {
+  async function chooseProfileImage(file, setter, maxDimension, label) {
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setNotice("Escolha uma imagem JPG, PNG ou WebP."); return; }
     try {
@@ -207,17 +208,19 @@ function App() {
       const image = new Image();
       image.onload = () => {
         const canvas = document.createElement("canvas");
-        const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+        const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
         canvas.width = Math.max(1, Math.round(image.width * scale)); canvas.height = Math.max(1, Math.round(image.height * scale));
         canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
         const compressed = canvas.toDataURL("image/jpeg", 0.78);
-        if (compressed.length > 700000) { setNotice("Essa imagem ficou muito grande. Escolha outra."); return; }
-        setProfileAvatar(compressed); setNotice("");
+        if (compressed.length > 700000) { setNotice(`A ${label.toLowerCase()} ficou muito grande. Escolha outra imagem.`); return; }
+        setter(compressed); setNotice("");
       };
       image.onerror = () => setNotice("Não foi possível abrir essa imagem.");
       image.src = dataUrl;
     } catch { setNotice("Não foi possível carregar essa imagem."); }
   }
+  function chooseProfileAvatar(file) { chooseProfileImage(file, setProfileAvatar, 512, "Foto de perfil"); }
+  function chooseProfileCover(file) { chooseProfileImage(file, setProfileCover, 1200, "Capa"); }
 
   function beginProfileEdit() {
     const p = profileData || authUser || {};
@@ -225,6 +228,7 @@ function App() {
     setProfileUsername(p.username || "");
     setProfileBio(p.bio || "");
     setProfileAvatar(p.avatar_url || "");
+    setProfileCover(p.cover_url || "");
     setEditingProfile(true); setNotice("");
   }
 
@@ -481,7 +485,7 @@ function App() {
             </div>}
             {profileBusy && <div className="empty-state">Carregando perfil...</div>}
             {(viewedProfile || profileData) && <div className="user-profile-card">
-              <div className="user-profile-cover"></div>
+              <div className="user-profile-cover" style={(viewedProfile || profileData).cover_url ? { backgroundImage: `url("${(viewedProfile || profileData).cover_url}")` } : undefined}></div>
               <div className="user-profile-main">
                 <div className="user-profile-avatar">{(viewedProfile || profileData).avatar_url ? <img src={(viewedProfile || profileData).avatar_url} alt="" /> : (viewedProfile || profileData).display_name.slice(0,1).toUpperCase()}</div>
                 <h1>{(viewedProfile || profileData).display_name}</h1>
@@ -555,7 +559,9 @@ function App() {
         <form className="create-modal" onSubmit={saveProfile}>
           <div className="modal-top"><div><div className="eyebrow">SUA CONTA COSTA</div><h2>Editar perfil</h2></div><button type="button" className="icon-button" onClick={() => setEditingProfile(false)}><X /></button></div>
           <label>Foto de perfil<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseProfileAvatar(e.target.files?.[0])} /></label>
-          {profileAvatar && <div className="avatar-preview"><img src={profileAvatar} alt="Prévia da foto" /><button type="button" className="cancel-button" onClick={() => setProfileAvatar("")}>Remover foto</button></div>}
+          {profileAvatar && <div className="avatar-preview"><img src={profileAvatar} alt="Prévia da foto de perfil" /><button type="button" className="cancel-button" onClick={() => setProfileAvatar("")}>Remover foto</button></div>}
+          <label>Capa do perfil<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseProfileCover(e.target.files?.[0])} /></label>
+          {profileCover && <div className="avatar-preview profile-cover-preview"><img src={profileCover} alt="Prévia da capa" /><button type="button" className="cancel-button" onClick={() => setProfileCover("")}>Remover capa</button></div>}
           <label>Nome de exibição<input value={profileName} onChange={e => setProfileName(e.target.value)} minLength={2} maxLength={50} required /></label>
           <label>@Usuário<input value={profileUsername} onChange={e => setProfileUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} minLength={3} maxLength={20} required /><small className="field-help">3–20 caracteres: letras sem acento, números e _.</small></label>
           <label>Biografia<textarea value={profileBio} onChange={e => setProfileBio(e.target.value)} placeholder="Conte um pouco sobre você..." rows={4} maxLength={240} /><small className="field-help">{profileBio.length}/240</small></label>
