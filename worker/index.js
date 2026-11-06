@@ -60,12 +60,27 @@ function cookieValue(request, name) {
 function sessionCookie(token, maxAge = SESSION_DAYS * 86400) {
   return `costa_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
 }
+async function ensureProfileSchema(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE,
+    bio TEXT NOT NULL DEFAULT '', avatar_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`).run();
+  const users = await env.DB.prepare("SELECT id, display_name FROM users WHERE id NOT IN (SELECT user_id FROM user_profiles)").all();
+  for (const account of users.results || []) {
+    const base = String(account.display_name || "usuario").normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 18) || "usuario";
+    const username = base + "_" + String(account.id).replace(/-/g, "").slice(0, 6).toLowerCase();
+    await env.DB.prepare("INSERT OR IGNORE INTO user_profiles (user_id, username) VALUES (?, ?)").bind(account.id, username).run();
+  }
+}
 async function currentUser(request, env) {
   const token = cookieValue(request, "costa_session");
   if (!token) return null;
+  await ensureProfileSchema(env);
   const tokenHash = bytesToBase64Url(await sha256(token));
   const row = await env.DB.prepare(
-    "SELECT users.id, users.email, users.display_name, users.avatar_url FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?"
+    "SELECT users.id, users.email, users.display_name, user_profiles.username, user_profiles.bio, COALESCE(user_profiles.avatar_url, users.avatar_url) AS avatar_url, users.created_at FROM sessions JOIN users ON users.id = sessions.user_id LEFT JOIN user_profiles ON user_profiles.user_id = users.id WHERE sessions.token_hash = ? AND sessions.expires_at > ?"
   ).bind(tokenHash, new Date().toISOString()).first();
   return row || null;
 }
@@ -140,6 +155,52 @@ async function authRoutes(request, env, url) {
   return null;
 }
 
+
+async function profileRoutes(request, env, url) {
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para acessar perfis." }, 401);
+  await ensureProfileSchema(env);
+
+  if (url.pathname === "/api/profile" && request.method === "GET") {
+    const profile = await env.DB.prepare("SELECT username, bio, avatar_url, created_at, updated_at FROM user_profiles WHERE user_id = ?").bind(user.id).first();
+    return json({ profile: { ...profile, avatar_url: profile?.avatar_url || user.avatar_url, display_name: user.display_name, email: user.email } });
+  }
+
+  if (url.pathname === "/api/profile" && request.method === "PUT") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const displayName = String(body.displayName || "").trim();
+    const username = String(body.username || "").trim().toLowerCase();
+    const bio = String(body.bio || "").trim();
+    const avatarUrl = body.avatarUrl == null ? null : String(body.avatarUrl);
+    if (displayName.length < 2 || displayName.length > 50) return json({ error: "O nome precisa ter entre 2 e 50 caracteres." }, 400);
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) return json({ error: "O @usuário deve ter 3 a 20 caracteres: letras, números e _." }, 400);
+    if (bio.length > 240) return json({ error: "A biografia pode ter no máximo 240 caracteres." }, 400);
+    if (avatarUrl && (!/^data:image\\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A foto precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
+    const taken = await env.DB.prepare("SELECT user_id FROM user_profiles WHERE username = ? AND user_id != ?").bind(username, user.id).first();
+    if (taken) return json({ error: "Esse @usuário já está em uso." }, 409);
+    await env.DB.prepare("UPDATE users SET display_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").bind(displayName, user.id).run();
+    await env.DB.prepare("UPDATE user_profiles SET username = ?, bio = ?, avatar_url = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE user_id = ?").bind(username, bio, avatarUrl, user.id).run();
+    return json({ profile: { username, bio, avatar_url: avatarUrl, display_name: displayName, email: user.email, created_at: user.created_at } });
+  }
+
+  if (url.pathname === "/api/users" && request.method === "GET") {
+    const username = String(url.searchParams.get("username") || "").trim().toLowerCase();
+    if (username) {
+      const profile = await env.DB.prepare("SELECT p.user_id, p.username, p.bio, p.avatar_url, p.created_at, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username = ?").bind(username).first();
+      if (!profile) return json({ error: "Perfil não encontrado." }, 404);
+      const stats = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM characters WHERE user_id = ? AND visibility = 'public') AS characters_count").bind(profile.user_id).first();
+      const chats = await env.DB.prepare("SELECT COUNT(*) AS conversations_count FROM saved_conversations WHERE user_id = ?").bind(profile.user_id).first().catch(() => ({ conversations_count: 0 }));
+      const { user_id, ...publicProfile } = profile;
+      return json({ profile: { ...publicProfile, characters_count: stats?.characters_count || 0, conversations_count: chats?.conversations_count || 0 } });
+    }
+    const search = String(url.searchParams.get("search") || "").trim().slice(0, 40);
+    if (search.length < 2) return json({ users: [] });
+    const result = await env.DB.prepare("SELECT p.username, p.bio, p.avatar_url, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username LIKE ? OR u.display_name LIKE ? ORDER BY u.display_name LIMIT 20").bind("%" + search + "%", "%" + search + "%").all();
+    return json({ users: result.results || [] });
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
 
 async function characterCountRoutes(request, env) {
   await env.DB.prepare(
@@ -297,6 +358,11 @@ async function characterRoutes(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/profile" || url.pathname === "/api/users") {
+      try { return await profileRoutes(request, env, url); }
+      catch (error) { console.error("Profile error:", error); return json({ error: "Não foi possível acessar o perfil." }, 500); }
+    }
 
     if (url.pathname === "/api/personas") {
       try { return await personaRoutes(request, env); }
