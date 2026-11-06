@@ -329,13 +329,20 @@ async function favoriteRoutes(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para acessar seus favoritos." }, 401);
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_favorites (
-    user_id TEXT NOT NULL, character_id TEXT NOT NULL,
+    user_id TEXT NOT NULL, character_id TEXT NOT NULL, character_data TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     PRIMARY KEY (user_id, character_id)
   )`).run();
+  try { await env.DB.prepare("ALTER TABLE user_favorites ADD COLUMN character_data TEXT").run(); } catch {}
+  const builtins = {
+    luna: { id: "luna", name: "Luna", tagline: "Uma amiga que adora conversar sobre tudo ✨", description: "Você é Luna, uma amiga gentil, curiosa e bem-humorada. Gosta de ouvir, fazer perguntas e conversar de forma natural.", greeting: "Oii! Que bom te ver por aqui. Como está sendo seu dia?", emoji: "🌙", color: "violet" },
+    max: { id: "max", name: "Max", tagline: "Seu parceiro de aventuras e histórias 🎮", description: "Você é Max, um parceiro divertido, criativo e empolgado com jogos, tecnologia e aventuras.", greeting: "E aí! Preparado para inventar alguma aventura hoje?", emoji: "🎮", color: "blue" },
+    prof: { id: "prof", name: "Professor Atlas", tagline: "Aprenda coisas novas sem complicação 🧠", description: "Você é o Professor Atlas, um professor paciente que explica assuntos difíceis com exemplos simples.", greeting: "Olá! Qual assunto vamos explorar hoje?", emoji: "🧠", color: "orange" },
+    bia: { id: "bia", name: "Bia", tagline: "Papo leve, ideias e criatividade 🌻", description: "Você é Bia, uma personagem alegre, acolhedora e criativa. Converse em português brasileiro.", greeting: "Oieee! Me conta, o que está acontecendo?", emoji: "🌻", color: "pink" }
+  };
   if (request.method === "GET") {
     const result = await env.DB.prepare(
-      "SELECT c.id, c.name, c.tagline, c.description, c.greeting, c.avatar_url, c.visibility, c.created_at FROM user_favorites f JOIN characters c ON c.id = f.character_id WHERE f.user_id = ? AND (c.visibility = 'public' OR c.user_id = ?) ORDER BY f.created_at DESC"
+      "SELECT f.character_id AS id, COALESCE(c.name, json_extract(f.character_data, '$.name')) AS name, COALESCE(c.tagline, json_extract(f.character_data, '$.tagline')) AS tagline, COALESCE(c.description, json_extract(f.character_data, '$.description')) AS description, COALESCE(c.greeting, json_extract(f.character_data, '$.greeting')) AS greeting, COALESCE(c.avatar_url, json_extract(f.character_data, '$.avatar_url')) AS avatar_url, COALESCE(c.visibility, 'public') AS visibility, f.created_at FROM user_favorites f LEFT JOIN characters c ON c.id = f.character_id WHERE f.user_id = ? AND (c.id IS NULL OR c.visibility = 'public' OR c.user_id = ?) ORDER BY f.created_at DESC"
     ).bind(user.id, user.id).all();
     return json({ favorites: result.results || [] });
   }
@@ -346,8 +353,9 @@ async function favoriteRoutes(request, env) {
     if (!characterId) return json({ error: "Personagem inválido." }, 400);
     if (request.method === "POST") {
       const character = await env.DB.prepare("SELECT id FROM characters WHERE id = ? AND (visibility = 'public' OR user_id = ?)").bind(characterId, user.id).first();
-      if (!character) return json({ error: "Personagem não encontrado ou indisponível." }, 404);
-      await env.DB.prepare("INSERT OR IGNORE INTO user_favorites (user_id, character_id) VALUES (?, ?)").bind(user.id, characterId).run();
+      const builtin = builtins[characterId];
+      if (!character && !builtin) return json({ error: "Personagem não encontrado ou indisponível." }, 404);
+      await env.DB.prepare("INSERT OR IGNORE INTO user_favorites (user_id, character_id, character_data) VALUES (?, ?, ?)").bind(user.id, characterId, builtin ? JSON.stringify(builtin) : null).run();
       return json({ ok: true, favorited: true });
     }
     await env.DB.prepare("DELETE FROM user_favorites WHERE user_id = ? AND character_id = ?").bind(user.id, characterId).run();
