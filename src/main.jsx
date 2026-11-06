@@ -692,6 +692,7 @@ function App() {
                 ))}
               </div>
             </section>
+            </div>
           </section>
         ) : showFavorites ? (
           <section className="explore-view history-view">
