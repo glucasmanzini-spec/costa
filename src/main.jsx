@@ -70,6 +70,7 @@ function App() {
   const [squadSetup, setSquadSetup] = useState(true);
   const [squadMembers, setSquadMembers] = useState([]);
   const [squadSelection, setSquadSelection] = useState([]);
+  const [squadSearch, setSquadSearch] = useState("");
   const [squadMessages, setSquadMessages] = useState([]);
   const [squadBusy, setSquadBusy] = useState(false);
   const [squadAuto, setSquadAuto] = useState(false);
@@ -299,8 +300,12 @@ function App() {
 
   function openSquadSetup() {
     setSelected(null); setShowHistory(false); setShowFavorites(false); setShowProfile(false); setShowPersonas(false);
-    setShowSquad(true); setSquadSetup(true); setSquadAuto(false); squadAutoRef.current = false; setSquadSelection([]); setSquadMessages([]); setMobileMenu(false);
+    setShowSquad(true); setSquadSetup(true); setSquadAuto(false); squadAutoRef.current = false; setSquadSelection([]); setSquadSearch(""); setSquadMessages([]); setMobileMenu(false);
   }
+
+  const filteredSquadCharacters = useMemo(() => characters.filter(character =>
+    `${character.name} ${character.tagline || ""} ${character.creator_username || ""}`.toLowerCase().includes(squadSearch.trim().toLowerCase())
+  ), [characters, squadSearch]);
 
   function toggleSquadSelection(character) {
     setSquadSelection(prev => prev.some(item => item.id === character.id)
@@ -546,11 +551,13 @@ function App() {
               <p className="persona-help">Escolha de 2 a 4 personagens. Eles vão conversar entre si — e você pode entrar na conversa quando quiser.</p>
               <label className="squad-topic-label">Tema ou situação inicial (opcional)<input value={squadTopic} onChange={e => setSquadTopic(e.target.value)} placeholder="Ex.: quatro amigos presos em uma estação espacial..." maxLength={500} /></label>
               <div className="section-heading"><div><div className="eyebrow muted">PERSONAGENS</div><h2>Escolha até 4 bots ({squadSelection.length}/4)</h2></div></div>
+              <div className="search-box squad-search"><Search size={17} /><input value={squadSearch} onChange={e => setSquadSearch(e.target.value)} placeholder="Pesquisar bot pelo nome ou criador..." aria-label="Pesquisar bots para a Squad" /><span className="squad-search-count">{filteredSquadCharacters.length}</span></div>
               <div className="character-grid squad-picker">
-                {characters.map(character => <button type="button" className={`character-card squad-pick ${squadSelection.some(item => item.id === character.id) ? "squad-picked" : ""}`} key={character.id} onClick={() => toggleSquadSelection(character)}>
+                {filteredSquadCharacters.map(character => <button type="button" className={`character-card squad-pick ${squadSelection.some(item => item.id === character.id) ? "squad-picked" : ""}`} key={character.id} onClick={() => toggleSquadSelection(character)}>
                   <div className={`card-art ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <span>{character.emoji || "✨"}</span>}</div>
                   <div className="card-info"><div className="card-title">{character.name}{squadSelection.some(item => item.id === character.id) ? " ✓" : ""}</div><p>{character.tagline}</p></div>
                 </button>)}
+                {filteredSquadCharacters.length === 0 && <div className="empty-state">Nenhum bot encontrado com esse nome. Tente outra pesquisa.</div>}
               </div>
               {squadSelection.length < 2 && <p className="field-help">Selecione pelo menos 2 personagens para começar.</p>}
               <button className="hero-button" onClick={beginSquad} disabled={squadSelection.length < 2}>Criar Squad com {squadSelection.length} personagens <Users size={17} /></button>
