@@ -102,7 +102,7 @@ function App() {
   const [newGreeting, setNewGreeting] = useState("");
   const [newAvatar, setNewAvatar] = useState("");
   const [newVisibility, setNewVisibility] = useState("private");
-  const [characterBusy, setCharacterBusy] = useState(false);
+  const [characterBusy, setCharacterBusy] = useState(false);\n  const [editingCharacterId, setEditingCharacterId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [authMode, setAuthMode] = useState(null);
@@ -464,25 +464,41 @@ function App() {
     }
   }
 
+  function beginCharacterEdit(character) {
+    setEditingCharacterId(character.id); setNewName(character.name || ""); setNewTagline(character.tagline || "");
+    setNewDescription(character.description || ""); setNewGreeting(character.greeting || "");
+    setNewAvatar(character.avatar_url || character.avatarUrl || ""); setNewVisibility(character.visibility || "private");
+    setNotice(""); setCreating(true);
+  }
+
+  async function deleteCharacter(character) {
+    if (!window.confirm('Tem certeza que deseja excluir o personagem "' + character.name + '"? Essa ação não pode ser desfeita.')) return;
+    try {
+      const response = await fetch("/api/characters/" + encodeURIComponent(character.id), { method: "DELETE" });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível excluir o personagem.");
+      setCharacters(prev => prev.filter(item => item.id !== character.id)); setFavorites(prev => prev.filter(item => item.id !== character.id));
+      setNotice("Personagem excluído.");
+    } catch (error) { setNotice(error.message); }
+  }
+
   async function createCharacter(event) {
     event.preventDefault();
     if (!authUser) { setCreating(false); setAuthMode("login"); setNotice("Entre na sua conta para salvar seus personagens."); return; }
     if (characterBusy) return;
-    setCharacterBusy(true);
-    setNotice("");
+    setCharacterBusy(true); setNotice("");
+    const editing = Boolean(editingCharacterId);
     try {
-      const response = await fetch("/api/characters", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const response = await fetch(editing ? "/api/characters/" + encodeURIComponent(editingCharacterId) : "/api/characters", {
+        method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName, tagline: newTagline, description: newDescription, greeting: newGreeting, avatarUrl: newAvatar || null, visibility: newVisibility })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o personagem.");
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Não foi possível salvar o personagem.");
       const character = { ...data.character, avatarUrl: data.character.avatar_url, emoji: "✨", color: "violet" };
-      setCharacters(prev => [character, ...prev.filter(c => c.id !== character.id)]);
-      setCreating(false); setNewName(""); setNewTagline(""); setNewDescription(""); setNewGreeting(""); setNewAvatar(""); setNewVisibility("private");
-      openCharacter(character);
-    } catch (error) { setNotice(error.message); }
-    finally { setCharacterBusy(false); }
+      if (editing) setCharacters(prev => prev.map(item => item.id === character.id ? { ...item, ...character } : item));
+      else setCharacters(prev => [character, ...prev.filter(item => item.id !== character.id)]);
+      setCreating(false); setEditingCharacterId(null); setNewName(""); setNewTagline(""); setNewDescription(""); setNewGreeting(""); setNewAvatar(""); setNewVisibility("private");
+      if (!editing) openCharacter(character); else setNotice("Personagem atualizado com sucesso!");
+    } catch (error) { setNotice(error.message); } finally { setCharacterBusy(false); }
   }
 
   async function chooseAvatar(file) {
@@ -688,7 +704,7 @@ function App() {
                 <div className="character-card" key={character.id}>
                   <div className={`card-art ${character.color}`} onClick={() => openCharacter(character)}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <><div className="card-orbit"></div><span>{character.emoji}</span></>}</div>
                   <button className={`favorite-toggle ${favorites.some(item => item.id === character.id) ? "favorited" : ""}`} aria-label={favorites.some(item => item.id === character.id) ? "Remover dos favoritos" : "Adicionar aos favoritos"} title={favorites.some(item => item.id === character.id) ? "Remover dos favoritos" : "Adicionar aos favoritos"} onClick={() => toggleFavorite(character)}><Heart size={18} fill={favorites.some(item => item.id === character.id) ? "currentColor" : "none"} /></button>
-                  <div className="card-info" onClick={() => openCharacter(character)}><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><small className="character-creator">Criado por @{character.creator_username || "costa"}</small><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="chat-count"><MessageCircle size={12} /> {chatCounts[character.id] || 0} chats</span></div></div>
+                  <div className="card-info" onClick={() => openCharacter(character)}><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><small className="character-creator">Criado por @{character.creator_username || "costa"}</small><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="chat-count"><MessageCircle size={12} /> {chatCounts[character.id] || 0} chats</span></div>{character.is_owner === 1 && <div className="character-owner-actions"><button type="button" onClick={e => { e.stopPropagation(); beginCharacterEdit(character); }}>Editar</button><button type="button" className="danger" onClick={e => { e.stopPropagation(); deleteCharacter(character); }}>Excluir</button></div>}</div>
                 </div>
               ))}
               {filtered.length === 0 && <div className="empty-state">Nenhum personagem encontrado. Tente outra busca.</div>}
@@ -732,7 +748,7 @@ function App() {
       </div>}
       {creating && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setCreating(false); }}>
         <form className="create-modal" onSubmit={createCharacter}>
-          <div className="modal-top"><div><div className="eyebrow">PERSONAGEM NOVO</div><h2>Crie alguém especial</h2></div><button type="button" className="icon-button" onClick={() => setCreating(false)}><X /></button></div>
+          <div className="modal-top"><div><div className="eyebrow">{editingCharacterId ? "EDITAR PERSONAGEM" : "PERSONAGEM NOVO"}</div><h2>{editingCharacterId ? "Edite seu personagem" : "Crie alguém especial"}</h2></div><button type="button" className="icon-button" onClick={() => setCreating(false)}><X /></button></div>
           <label>Nome do personagem<input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ex.: Alex" maxLength={40} required /></label>
           <label>Frase curta (opcional)<input value={newTagline} onChange={e => setNewTagline(e.target.value)} placeholder="Ex.: Uma amiga divertida e curiosa" maxLength={100} /></label>
           <label>Saudação inicial (opcional)<textarea value={newGreeting} onChange={e => setNewGreeting(e.target.value)} placeholder="O que o personagem diz ao iniciar uma conversa?" rows={2} maxLength={500} /></label>
@@ -741,7 +757,7 @@ function App() {
           <label>Foto de perfil (opcional)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseAvatar(e.target.files?.[0])} /></label>
           {newAvatar && <div className="avatar-preview"><img src={newAvatar} alt="Prévia da foto do personagem" /><button type="button" className="cancel-button" onClick={() => setNewAvatar("")}>Remover foto</button></div>}
           {notice && <div className="notice">{notice}</div>}
-          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCreating(false)}>Cancelar</button><button className="hero-button" type="submit" disabled={characterBusy}>{characterBusy ? "Salvando..." : "Criar personagem"} <Sparkles size={16} /></button></div>
+          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => { setCreating(false); setEditingCharacterId(null); }}>Cancelar</button><button className="hero-button" type="submit" disabled={characterBusy}>{characterBusy ? "Salvando..." : editingCharacterId ? "Salvar alterações" : "Criar personagem"} <Sparkles size={16} /></button></div>
         </form>
       </div>}
     </div>
