@@ -53,3 +53,27 @@
 
 /* Character owner actions */
 .character-owner-actions{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid #343040}.character-owner-actions button{border:1px solid #514568;background:#282235;color:#d9c8ff;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer}.character-owner-actions button:hover{background:#3a2d50}.character-owner-actions button.danger{border-color:#713b4b;background:#321d27;color:#ff9bad}.character-owner-actions button.danger:hover{background:#512532}
+
+
+/* Character comments */
+.character-comments{flex:0 0 auto;max-height:210px;overflow-y:auto;margin-top:12px;padding:12px 14px;border:1px solid #302b40;border-radius:13px;background:#11111b}
+.comments-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.comments-heading h2{font:800 14px Manrope,sans-serif;margin:0;color:#f0edf8}
+.comments-heading span{font-size:10px;color:#89849b;margin-left:8px}
+.comment-composer{display:flex;gap:8px;margin-bottom:10px}
+.comment-composer input{flex:1;min-width:0;background:#191824;border:1px solid #393545;border-radius:9px;padding:9px 11px;color:white;outline:0;font-size:11px}
+.comment-composer button{border:0;border-radius:9px;background:#7959bd;color:white;padding:0 13px;font-size:11px;font-weight:700}
+.comment-composer button:disabled{opacity:.45;cursor:not-allowed}
+.comment-list{display:flex;flex-direction:column;gap:9px}
+.comments-empty{padding:10px 0;text-align:center;color:#858094;font-size:11px}
+.comment-item{display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-top:1px solid #292637}
+.comment-avatar{width:28px;height:28px;flex:0 0 28px;display:grid;place-items:center;border-radius:50%;background:#4b3b68;color:#eee;font-size:11px;font-weight:700;overflow:hidden}
+.comment-avatar img{width:100%;height:100%;object-fit:cover}
+.comment-content{flex:1;min-width:0}
+.comment-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.comment-meta strong{font-size:11px;color:#eee9f8}
+.comment-meta span,.comment-meta time{font-size:9px;color:#89849b}
+.comment-content p{margin:4px 0 0;color:#d4d0df;font-size:11px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.comment-delete{border:0;background:transparent;color:#888197;padding:4px;cursor:pointer}
+.comment-delete:hover{color:#ff8e9b}
+@media(max-width:680px){.character-comments{max-height:190px;margin-top:8px;padding:10px}.comment-composer button{padding:0 10px}}
