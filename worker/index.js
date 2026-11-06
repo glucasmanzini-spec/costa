@@ -395,6 +395,7 @@ async function characterCommentRoutes(request, env, url) {
   const parts = url.pathname.split("/").filter(Boolean).slice(2).map(decodeURIComponent);
   const characterId = parts[0] || "";
   if (!characterId || characterId.length > 120) return json({ error: "Personagem inválido." }, 400);
+  await ensureProfileSchema(env);
   const user = await currentUser(request, env);
   const character = await env.DB.prepare("SELECT id, user_id, visibility FROM characters WHERE id = ?").bind(characterId).first();
   if (character && character.visibility !== "public" && character.user_id !== user?.id) return json({ error: "Personagem não encontrado." }, 404);
