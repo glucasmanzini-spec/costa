@@ -163,8 +163,8 @@ async function profileRoutes(request, env, url) {
 
   if (url.pathname === "/api/profile" && request.method === "GET") {
     const profile = await env.DB.prepare("SELECT username, bio, avatar_url, created_at, updated_at FROM user_profiles WHERE user_id = ?").bind(user.id).first();
-    const stats = await env.DB.prepare("SELECT COUNT(*) AS characters_count FROM characters WHERE user_id = ? AND visibility = 'public'").bind(user.id).first();
-    return json({ profile: { ...profile, avatar_url: profile?.avatar_url || user.avatar_url, display_name: user.display_name, email: user.email, characters_count: stats?.characters_count || 0 } });
+    const characters = await env.DB.prepare("SELECT id, name, tagline, avatar_url FROM characters WHERE user_id = ? AND visibility = 'public' ORDER BY created_at DESC LIMIT 30").bind(user.id).all();
+    return json({ profile: { ...profile, avatar_url: profile?.avatar_url || user.avatar_url, display_name: user.display_name, email: user.email, characters: characters.results || [], characters_count: characters.results?.length || 0 } });
   }
 
   if (url.pathname === "/api/profile" && request.method === "PUT") {
@@ -190,9 +190,9 @@ async function profileRoutes(request, env, url) {
     if (username) {
       const profile = await env.DB.prepare("SELECT p.user_id, p.username, p.bio, p.avatar_url, p.created_at, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username = ?").bind(username).first();
       if (!profile) return json({ error: "Perfil não encontrado." }, 404);
-      const stats = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM characters WHERE user_id = ? AND visibility = 'public') AS characters_count").bind(profile.user_id).first();
+      const characters = await env.DB.prepare("SELECT id, name, tagline, avatar_url FROM characters WHERE user_id = ? AND visibility = 'public' ORDER BY created_at DESC LIMIT 30").bind(profile.user_id).all();
       const { user_id, ...publicProfile } = profile;
-      return json({ profile: { ...publicProfile, characters_count: stats?.characters_count || 0 } });
+      return json({ profile: { ...publicProfile, characters: characters.results || [], characters_count: characters.results?.length || 0 } });
     }
     const search = String(url.searchParams.get("search") || "").trim().slice(0, 40);
     if (search.length < 2) return json({ users: [] });
