@@ -235,6 +235,31 @@ async function conversationRoutes(request, env, url) {
   return json({ error: "Método não permitido." }, 405);
 }
 
+async function personaRoutes(request, env) {
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para gerenciar personas." }, 401);
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS personas (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL,
+    description TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  )`).run();
+  if (request.method === "GET") {
+    const result = await env.DB.prepare("SELECT id, name, description, created_at FROM personas WHERE user_id = ? ORDER BY created_at DESC").bind(user.id).all();
+    return json({ personas: result.results || [] });
+  }
+  if (request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const name = String(body.name || "").trim();
+    const description = String(body.description || "").trim();
+    if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
+    if (description.length < 2 || description.length > 1200) return json({ error: "A descrição precisa ter entre 2 e 1.200 caracteres." }, 400);
+    const id = crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO personas (id, user_id, name, description) VALUES (?, ?, ?, ?)").bind(id, user.id, name, description).run();
+    return json({ persona: { id, name, description } }, 201);
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
+
 async function characterRoutes(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
@@ -273,6 +298,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/personas") {
+      try { return await personaRoutes(request, env); }
+      catch (error) { console.error("Persona error:", error); return json({ error: "Não foi possível acessar suas personas." }, 500); }
+    }
+
     if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
       try { return await conversationRoutes(request, env, url); }
       catch (error) { console.error("Conversation error:", error); return json({ error: "Não foi possível acessar o histórico de conversas." }, 500); }
@@ -305,7 +335,7 @@ export default {
     if (url.pathname === "/api/chat" && request.method === "POST") {
       let body;
       try { body = await request.json(); } catch { return json({ error: "Corpo JSON inválido." }, 400); }
-      const { messages, character } = body ?? {};
+      const { messages, character, persona } = body ?? {};
       if (!Array.isArray(messages) || messages.length === 0)
         return json({ error: "Envie pelo menos uma mensagem." }, 400);
       const safeMessages = messages.slice(-8).map(message => ({
@@ -316,7 +346,8 @@ export default {
         `Você é ${String(character?.name || "um personagem").slice(0, 80)}.`,
         String(character?.description || "Converse de forma natural e amigável.").slice(0, 1200),
         "Responda em português brasileiro, a menos que a pessoa peça outro idioma.",
-        "Mantenha a personalidade do personagem e não afirme ser uma pessoa real."
+        "Mantenha a personalidade do personagem e não afirme ser uma pessoa real.",
+        persona?.name ? `A pessoa está conversando como ${String(persona.name).slice(0, 80)}. Sobre essa persona: ${String(persona.description || "").slice(0, 1200)}. Trate a pessoa de acordo com essa identidade, sem confundir a persona com você.` : ""
       ].join(" ");
       try {
         const result = await env.AI.run(MODEL, {
