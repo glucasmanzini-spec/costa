@@ -657,6 +657,8 @@ function App() {
                 </select>
               </label>
             </div>
+            <div className="chat-content-layout">
+              <div className="chat-main-column">
             <div className="messages-area">
               {messages.map((message, index) => (
                 <div className={`message-row ${message.role}`} key={index}>
@@ -673,6 +675,7 @@ function App() {
               <button className="send-button" type="submit" disabled={!draft.trim() || busy} aria-label="Enviar mensagem"><Send size={18} /></button>
             </form>
             <p className="disclaimer">A IA pode cometer erros. Não compartilhe informações pessoais ou segredos.</p>
+              </div>
             <section className="character-comments">
               <div className="comments-heading"><div><h2>Comentários</h2><span>{characterComments.length} {characterComments.length === 1 ? "comentário" : "comentários"}</span></div></div>
               <form className="comment-composer" onSubmit={sendCharacterComment}>
@@ -688,6 +691,7 @@ function App() {
                   </article>
                 ))}
               </div>
+            </div>
             </section>
           </section>
         ) : showFavorites ? (
