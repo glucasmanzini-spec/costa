@@ -190,7 +190,7 @@ function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar o perfil.");
-      setProfileData(data.profile);
+      setProfileData(prev => ({ ...prev, ...data.profile, characters: prev?.characters || [], characters_count: prev?.characters_count || 0 }));
       setAuthUser(prev => ({ ...prev, display_name: data.profile.display_name, username: data.profile.username, bio: data.profile.bio, avatar_url: data.profile.avatar_url }));
       setEditingProfile(false);
     } catch (error) { setNotice(error.message); }
@@ -249,6 +249,7 @@ function App() {
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     setAuthUser(null);
+    setShowProfile(false); setViewedProfile(null); setProfileData(null);
   }
 
   useEffect(() => {
@@ -486,7 +487,7 @@ function App() {
                 <h1>{(viewedProfile || profileData).display_name}</h1>
                 <div className="user-profile-handle">@{(viewedProfile || profileData).username}</div>
                 <p>{(viewedProfile || profileData).bio || "Este usuário ainda não adicionou uma biografia."}</p>
-                <div className="profile-stats"><div><strong>{(viewedProfile || profileData).characters_count ?? "—"}</strong><span>Personagens públicos</span></div>{viewedProfile && <div><strong>{viewedProfile.conversations_count ?? 0}</strong><span>Conversas</span></div>}<div><strong>{new Date((viewedProfile || profileData).created_at || Date.now()).toLocaleDateString("pt-BR")}</strong><span>No Costa desde</span></div></div>
+                <div className="profile-stats"><div><strong>{(viewedProfile || profileData).characters_count ?? "—"}</strong><span>Personagens públicos</span></div><div><strong>{new Date((viewedProfile || profileData).created_at || Date.now()).toLocaleDateString("pt-BR")}</strong><span>No Costa desde</span></div></div>
                 {viewedProfile && <button className="cancel-button" onClick={() => { setViewedProfile(null); setProfileResults([]); }}>Voltar ao meu perfil</button>}
               </div>
             </div>}
