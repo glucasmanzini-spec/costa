@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Search, Plus, Compass, MessageCircle, Settings, Sparkles, Send,
+  Search, Plus, Compass, MessageCircle, Settings, Sparkles, Send, Users,
   ArrowLeft, Menu, X, SlidersHorizontal, Heart, MoreHorizontal
 } from "lucide-react";
 import "./style.css";
@@ -66,6 +66,16 @@ function App() {
   const [historyItems, setHistoryItems] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showSquad, setShowSquad] = useState(false);
+  const [squadSetup, setSquadSetup] = useState(true);
+  const [squadMembers, setSquadMembers] = useState([]);
+  const [squadSelection, setSquadSelection] = useState([]);
+  const [squadMessages, setSquadMessages] = useState([]);
+  const [squadBusy, setSquadBusy] = useState(false);
+  const [squadAuto, setSquadAuto] = useState(false);
+  const [squadSpeaker, setSquadSpeaker] = useState(0);
+  const [squadDraft, setSquadDraft] = useState("");
+  const [squadTopic, setSquadTopic] = useState("");
   const [favorites, setFavorites] = useState([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
@@ -283,6 +293,68 @@ function App() {
     setFavorites(prev => isFavorite ? prev.filter(item => item.id !== character.id) : [character, ...prev]);
   }
 
+
+  function openSquadSetup() {
+    setSelected(null); setShowHistory(false); setShowFavorites(false); setShowProfile(false); setShowPersonas(false);
+    setShowSquad(true); setSquadSetup(true); setSquadAuto(false); setSquadSelection([]); setSquadMessages([]); setMobileMenu(false);
+  }
+
+  function toggleSquadSelection(character) {
+    setSquadSelection(prev => prev.some(item => item.id === character.id)
+      ? prev.filter(item => item.id !== character.id)
+      : prev.length < 4 ? [...prev, character] : prev);
+  }
+
+  function beginSquad() {
+    if (squadSelection.length < 2 || squadSelection.length > 4) return;
+    setSquadMembers(squadSelection); setSquadMessages(squadTopic.trim()
+      ? [{ role: "user", speaker: "Você", content: "Contexto inicial da sala: " + squadTopic.trim() }]
+      : []);
+    setSquadSpeaker(0); setSquadSetup(false); setSquadAuto(false);
+  }
+
+  async function squadNextTurn(userText = "") {
+    if (squadBusy || squadMembers.length < 2) return;
+    setSquadBusy(true);
+    const currentMessages = userText
+      ? [...squadMessages, { role: "user", speaker: "Você", content: userText }]
+      : squadMessages;
+    if (userText) setSquadMessages(currentMessages);
+    const speakerIndex = squadSpeaker % squadMembers.length;
+    try {
+      const response = await fetch("/api/squad-turn", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ members: squadMembers, speakerIndex, messages: currentMessages.map(m => ({ role: m.role === "user" ? "user" : "assistant", content: (m.speaker ? m.speaker + ": " : "") + m.content })) })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível gerar a fala.");
+      setSquadMessages(prev => [...prev, { role: "assistant", speaker: squadMembers[speakerIndex].name, character: squadMembers[speakerIndex], content: data.reply }]);
+      setSquadSpeaker((speakerIndex + 1) % squadMembers.length);
+    } catch (error) { setNotice(error.message); setSquadAuto(false); }
+    finally { setSquadBusy(false); }
+  }
+
+  async function runSquadAuto() {
+    if (squadBusy) return;
+    setSquadAuto(true);
+    for (let turn = 0; turn < 20; turn++) {
+      if (!squadAuto && turn > 0) break;
+      await new Promise(resolve => setTimeout(resolve, turn === 0 ? 0 : 900));
+      if (!squadAuto && turn > 0) break;
+      await squadNextTurn();
+      if (!squadAuto) break;
+    }
+    setSquadAuto(false);
+  }
+
+  function sendSquadMessage(event) {
+    event?.preventDefault();
+    const content = squadDraft.trim();
+    if (!content || squadBusy) return;
+    setSquadDraft("");
+    squadNextTurn(content);
+  }
+
   const messages = activeChatId ? (messagesById[activeChatId] || []) : [];
 
   async function startConversation(character) {
@@ -437,6 +509,7 @@ function App() {
         <button className="create-button" onClick={() => setCreating(true)}><Plus size={18} /> Criar personagem</button>
         <nav className="main-nav">
           <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowFavorites(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
+          <button className={`nav-item ${showSquad ? "active" : ""}`} onClick={openSquadSetup}><Users size={18} /> Costa Squad</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
           <button className={`nav-item ${showFavorites ? "active" : ""}`} onClick={() => { if (!authUser) { setAuthMode("login"); return; } setShowFavorites(true); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setSelected(null); setMobileMenu(false); }}><Heart size={18} /> Meus favoritos <span className="favorite-nav-count">{favorites.length}</span></button>
@@ -462,7 +535,43 @@ function App() {
           <div className="breadcrumb">{selected ? <><button onClick={() => setSelected(null)}>Explorar</button><span>/</span><strong>{selected.name}</strong></> : <strong>Explorar personagens</strong>}</div>
           <div className="top-actions"><span className="beta-pill">BETA</span>{authUser ? <button className="top-avatar" title="Meu perfil" onClick={openOwnProfile}>{authUser.avatar_url ? <img src={authUser.avatar_url} alt="" /> : (authUser.display_name || "C").slice(0,1).toUpperCase()}</button> : <button className="top-login" onClick={() => setAuthMode("login")}>Entrar</button>}</div>
         </header>
-        {selected ? (
+        {showSquad ? (
+          <section className="explore-view squad-view">
+            {squadSetup ? <>
+              <div className="section-heading"><div><div className="eyebrow muted">CONVERSAS EM GRUPO</div><h2>Monte sua Costa Squad</h2></div></div>
+              <p className="persona-help">Escolha de 2 a 4 personagens. Eles vão conversar entre si — e você pode entrar na conversa quando quiser.</p>
+              <label className="squad-topic-label">Tema ou situação inicial (opcional)<input value={squadTopic} onChange={e => setSquadTopic(e.target.value)} placeholder="Ex.: quatro amigos presos em uma estação espacial..." maxLength={500} /></label>
+              <div className="section-heading"><div><div className="eyebrow muted">PERSONAGENS</div><h2>Escolha até 4 bots ({squadSelection.length}/4)</h2></div></div>
+              <div className="character-grid squad-picker">
+                {characters.map(character => <button type="button" className={`character-card squad-pick ${squadSelection.some(item => item.id === character.id) ? "squad-picked" : ""}`} key={character.id} onClick={() => toggleSquadSelection(character)}>
+                  <div className={`card-art ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <span>{character.emoji || "✨"}</span>}</div>
+                  <div className="card-info"><div className="card-title">{character.name}{squadSelection.some(item => item.id === character.id) ? " ✓" : ""}</div><p>{character.tagline}</p></div>
+                </button>)}
+              </div>
+              {squadSelection.length < 2 && <p className="field-help">Selecione pelo menos 2 personagens para começar.</p>}
+              <button className="hero-button" onClick={beginSquad} disabled={squadSelection.length < 2}>Criar Squad com {squadSelection.length} personagens <Users size={17} /></button>
+            </> : <>
+              <div className="section-heading squad-room-heading"><div><div className="eyebrow muted">COSTA SQUAD · SALA AO VIVO</div><h2>{squadMembers.map(m => m.name).join(" · ")}</h2></div><button className="cancel-button" onClick={openSquadSetup}>Trocar personagens</button></div>
+              <div className="squad-roster">{squadMembers.map((member, index) => <div className="squad-roster-item" key={member.id}><span className={`avatar small ${member.color}`}>{member.avatar_url ? <img src={member.avatar_url} alt="" /> : member.emoji || "✨"}</span><strong>{member.name}</strong><small>{index === squadSpeaker ? "Próximo a falar" : "Na sala"}</small></div>)}</div>
+              <div className="squad-messages">
+                {squadMessages.map((message, index) => <div className={`squad-message ${message.role === "user" ? "squad-user" : ""}`} key={index}>
+                  {message.role !== "user" && <strong>{message.speaker}</strong>}
+                  {message.role === "user" && <strong>Você</strong>}
+                  <p>{message.content}</p>
+                </div>)}
+                {squadBusy && <div className="squad-message"><strong>{squadMembers[squadSpeaker]?.name || "Personagem"}</strong><p className="typing"><i></i><i></i><i></i></p></div>}
+                {squadMessages.length === 0 && <div className="empty-state">A sala está pronta! Clique em “Próxima fala” ou inicie a conversa automática.</div>}
+              </div>
+              {notice && <div className="notice">{notice}</div>}
+              <div className="squad-controls">
+                <button className="cancel-button" disabled={squadBusy} onClick={() => squadNextTurn()}>Próxima fala</button>
+                <button className="hero-button" disabled={squadBusy} onClick={() => { if (squadAuto) setSquadAuto(false); else runSquadAuto(); }}>{squadAuto ? "Pausar conversa" : "▶ Conversar automaticamente"}</button>
+              </div>
+              <form className="composer" onSubmit={sendSquadMessage}><input value={squadDraft} onChange={e => setSquadDraft(e.target.value)} placeholder="Entre na conversa..." /><button className="send-button" type="submit" disabled={!squadDraft.trim() || squadBusy}><Send size={18} /></button></form>
+              <p className="disclaimer">Os personagens falam em rodízio. Você pode assistir ou participar a qualquer momento.</p>
+            </>}
+          </section>
+        ) : selected ? (
           <section className="chat-view">
             <div className="chat-heading">
               <button className="back-button" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Voltar</button>
