@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Search, Plus, Compass, MessageCircle, Settings, Sparkles, Send, Users,
-  ArrowLeft, Menu, X, SlidersHorizontal, Heart, MoreHorizontal
+  ArrowLeft, Menu, X, SlidersHorizontal, Heart, MoreHorizontal, Image
 } from "lucide-react";
 import "./style.css";
 
