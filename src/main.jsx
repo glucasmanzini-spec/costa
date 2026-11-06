@@ -85,6 +85,10 @@ function App() {
   const [commentDraft, setCommentDraft] = useState("");
   const [commentsBusy, setCommentsBusy] = useState(false);
   const [commentSending, setCommentSending] = useState(false);
+  const [commentImage, setCommentImage] = useState("");
+  const [replyToComment, setReplyToComment] = useState(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replyImage, setReplyImage] = useState("");
   const [historyBusy, setHistoryBusy] = useState(false);
   const [personas, setPersonas] = useState([]);
   const [activePersonaId, setActivePersonaId] = useState("");
@@ -441,21 +445,41 @@ function App() {
     setMessagesById(prev => ({ ...prev, [id]: next }));
   }
 
-  async function sendCharacterComment(event) {
-    event.preventDefault();
-    const content = commentDraft.trim();
-    if (!content || commentSending || !selected?.id) return;
+  function readCommentImage(file, setter) {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 1024 * 1024) { setNotice("Escolha uma imagem de até 1 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setter(String(reader.result || ""));
+    reader.onerror = () => setNotice("Não foi possível ler a imagem.");
+    reader.readAsDataURL(file);
+  }
+
+  async function publishComment(content, imageUrl, parentId = null) {
+    if ((!content.trim() && !imageUrl) || commentSending || !selected?.id) return;
     if (!authUser) { setAuthMode("login"); setNotice("Entre na sua conta para comentar."); return; }
     setCommentSending(true);
     try {
       const response = await fetch("/api/character-comments/" + encodeURIComponent(selected.id), {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content })
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: content.trim(), image_url: imageUrl || "", parent_id: parentId })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Não foi possível publicar o comentário.");
-      setCharacterComments(prev => [data.comment, ...prev]); setCommentDraft("");
+      if (!response.ok) throw new Error(data.error || "Não foi possível publicar.");
+      setCharacterComments(prev => [...prev, data.comment]);
+      if (parentId) { setReplyDraft(""); setReplyImage(""); setReplyToComment(null); }
+      else { setCommentDraft(""); setCommentImage(""); }
     } catch (error) { setNotice(error.message); }
     finally { setCommentSending(false); }
+  }
+
+  async function sendCharacterComment(event) {
+    event.preventDefault();
+    await publishComment(commentDraft, commentImage);
+  }
+
+  async function sendCommentReply(event) {
+    event.preventDefault();
+    if (!replyToComment) return;
+    await publishComment(replyDraft, replyImage, replyToComment.id);
   }
 
   async function deleteCharacterComment(comment) {
@@ -679,15 +703,30 @@ function App() {
             <section className="character-comments">
               <div className="comments-heading"><div><h2>Comentários</h2><span>{characterComments.length} {characterComments.length === 1 ? "comentário" : "comentários"}</span></div></div>
               <form className="comment-composer" onSubmit={sendCharacterComment}>
-                <input value={commentDraft} onChange={e => setCommentDraft(e.target.value)} maxLength={500} placeholder={authUser ? "O que você achou deste personagem?" : "Entre para deixar um comentário..."} aria-label="Escreva um comentário" />
-                <button type="submit" disabled={!commentDraft.trim() || commentSending}>{commentSending ? "Enviando..." : "Comentar"}</button>
+                <input value={commentDraft} onChange={e => setCommentDraft(e.target.value)} maxLength={500} placeholder={authUser ? "Escreva um comentário..." : "Entre para comentar..."} aria-label="Escreva um comentário" />
+                <label className="comment-image-button" title="Anexar imagem"> <Image size={15} /><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => readCommentImage(e.target.files?.[0], setCommentImage)} /></label>
+                <button type="submit" disabled={(!commentDraft.trim() && !commentImage) || commentSending}>{commentSending ? "..." : "Enviar"}</button>
               </form>
+              {commentImage && <div className="comment-image-preview"><img src={commentImage} alt="Prévia do anexo" /><button type="button" onClick={() => setCommentImage("")}>Remover</button></div>}
               <div className="comment-list">
-                {commentsBusy ? <div className="comments-empty">Carregando comentários...</div> : characterComments.length === 0 ? <div className="comments-empty">Ainda não há comentários. Seja a primeira pessoa a comentar!</div> : characterComments.map(comment => (
-                  <article className="comment-item" key={comment.id}>
-                    <div className="comment-avatar">{comment.avatar_url ? <img src={comment.avatar_url} alt="" /> : (comment.display_name || "?").slice(0, 1).toUpperCase()}</div>
-                    <div className="comment-content"><div className="comment-meta"><strong>{comment.display_name || "Usuário"}</strong><span>@{comment.username || "usuario"}</span><time>{new Date(comment.created_at).toLocaleDateString("pt-BR")}</time></div><p>{comment.content}</p></div>
-                    {comment.can_delete && <button className="comment-delete" type="button" onClick={() => deleteCharacterComment(comment)} title="Excluir comentário" aria-label="Excluir comentário"><X size={15} /></button>}
+                {commentsBusy ? <div className="comments-empty">Carregando comentários...</div> : characterComments.filter(comment => !comment.parent_id).length === 0 ? <div className="comments-empty">Ainda não há comentários. Seja a primeira pessoa a comentar!</div> : characterComments.filter(comment => !comment.parent_id).map(comment => (
+                  <article className="comment-thread" key={comment.id}>
+                    <div className="comment-item">
+                      <div className="comment-avatar">{comment.avatar_url ? <img src={comment.avatar_url} alt="" /> : (comment.display_name || "?").slice(0, 1).toUpperCase()}</div>
+                      <div className="comment-content"><div className="comment-meta"><strong>{comment.display_name || "Usuário"}</strong><span>@{comment.username || "usuario"}</span><time>{new Date(comment.created_at).toLocaleDateString("pt-BR")}</time></div>{comment.content && <p>{comment.content}</p>}{comment.image_url && <img className="comment-attached-image" src={comment.image_url} alt="Imagem anexada ao comentário" />}</div>
+                      <div className="comment-item-actions">{comment.can_delete && <button className="comment-delete" type="button" onClick={() => deleteCharacterComment(comment)} title="Excluir comentário"><X size={14} /></button>}<button className="comment-reply-button" type="button" onClick={() => { setReplyToComment(comment); setReplyDraft(""); setReplyImage(""); }}>Responder</button></div>
+                    </div>
+                    {characterComments.filter(reply => reply.parent_id === comment.id).map(reply => <div className="comment-item comment-reply" key={reply.id}>
+                      <div className="comment-avatar">{reply.avatar_url ? <img src={reply.avatar_url} alt="" /> : (reply.display_name || "?").slice(0, 1).toUpperCase()}</div>
+                      <div className="comment-content"><div className="comment-meta"><strong>{reply.display_name || "Usuário"}</strong><span>@{reply.username || "usuario"}</span><time>{new Date(reply.created_at).toLocaleDateString("pt-BR")}</time></div>{reply.content && <p>{reply.content}</p>}{reply.image_url && <img className="comment-attached-image" src={reply.image_url} alt="Imagem anexada à resposta" />}</div>
+                      {reply.can_delete && <button className="comment-delete" type="button" onClick={() => deleteCharacterComment(reply)} title="Excluir resposta"><X size={14} /></button>}
+                    </div>)}
+                    {replyToComment?.id === comment.id && <form className="comment-composer reply-composer" onSubmit={sendCommentReply}>
+                      <input value={replyDraft} onChange={e => setReplyDraft(e.target.value)} maxLength={500} placeholder="Escreva sua resposta..." autoFocus />
+                      <label className="comment-image-button" title="Anexar imagem"><Image size={14} /><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => readCommentImage(e.target.files?.[0], setReplyImage)} /></label>
+                      <button type="submit" disabled={(!replyDraft.trim() && !replyImage) || commentSending}>Responder</button><button type="button" className="reply-cancel" onClick={() => setReplyToComment(null)}>×</button>
+                    </form>}
+                    {replyToComment?.id === comment.id && replyImage && <div className="comment-image-preview"><img src={replyImage} alt="Prévia da resposta" /><button type="button" onClick={() => setReplyImage("")}>Remover</button></div>}
                   </article>
                 ))}
               </div>
