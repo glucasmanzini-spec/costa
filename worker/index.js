@@ -163,7 +163,7 @@ async function characterRoutes(request, env) {
     if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
     if (description.length < 2 || description.length > 1500) return json({ error: "A descrição precisa ter entre 2 e 1.500 caracteres." }, 400);
     if (tagline.length > 100 || greeting.length > 500) return json({ error: "A frase curta ou saudação é muito longa." }, 400);
-    if (avatarUrl && (!/^data:image\\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000))
+    if (avatarUrl && (!/^data:image\/(jpeg|png|webp);base64,/.test(avatarUrl) || avatarUrl.length > 700000))
       return json({ error: "A imagem precisa ser JPG, PNG ou WebP e ter até aproximadamente 500 KB." }, 400);
     const id = crypto.randomUUID();
     await env.DB.prepare(
