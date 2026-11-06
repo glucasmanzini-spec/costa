@@ -54,6 +54,7 @@ function App() {
   const [newTagline, setNewTagline] = useState("");
   const [newGreeting, setNewGreeting] = useState("");
   const [newAvatar, setNewAvatar] = useState("");
+  const [newVisibility, setNewVisibility] = useState("private");
   const [characterBusy, setCharacterBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -154,13 +155,13 @@ function App() {
     try {
       const response = await fetch("/api/characters", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName, tagline: newTagline, description: newDescription, greeting: newGreeting, avatarUrl: newAvatar || null })
+        body: JSON.stringify({ name: newName, tagline: newTagline, description: newDescription, greeting: newGreeting, avatarUrl: newAvatar || null, visibility: newVisibility })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar o personagem.");
       const character = { ...data.character, avatarUrl: data.character.avatar_url, emoji: "✨", color: "violet" };
       setCharacters(prev => [character, ...prev.filter(c => c.id !== character.id)]);
-      setCreating(false); setNewName(""); setNewTagline(""); setNewDescription(""); setNewGreeting(""); setNewAvatar("");
+      setCreating(false); setNewName(""); setNewTagline(""); setNewDescription(""); setNewGreeting(""); setNewAvatar(""); setNewVisibility("private");
       openCharacter(character);
     } catch (error) { setNotice(error.message); }
     finally { setCharacterBusy(false); }
@@ -291,6 +292,7 @@ function App() {
           <label>Frase curta (opcional)<input value={newTagline} onChange={e => setNewTagline(e.target.value)} placeholder="Ex.: Uma amiga divertida e curiosa" maxLength={100} /></label>
           <label>Saudação inicial (opcional)<textarea value={newGreeting} onChange={e => setNewGreeting(e.target.value)} placeholder="O que o personagem diz ao iniciar uma conversa?" rows={2} maxLength={500} /></label>
           <label>Personalidade e instruções<textarea value={newDescription} onChange={e => setNewDescription(e.target.value)} placeholder="Descreva como ele fala, age e quais assuntos gosta..." rows={5} maxLength={1500} required /></label>
+          <label>Visibilidade<select value={newVisibility} onChange={e => setNewVisibility(e.target.value)}><option value="public">Public — qualquer pessoa pode encontrar</option><option value="private">Private — só você pode ver</option></select></label>
           <label>Foto de perfil (opcional)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseAvatar(e.target.files?.[0])} /></label>
           {newAvatar && <div className="avatar-preview"><img src={newAvatar} alt="Prévia da foto do personagem" /><button type="button" className="cancel-button" onClick={() => setNewAvatar("")}>Remover foto</button></div>}
           {notice && <div className="notice">{notice}</div>}
