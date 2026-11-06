@@ -446,6 +446,45 @@ export default {
       return json({ ok: true, app: "Costa", provider: "Cloudflare Workers AI", model: MODEL });
     }
 
+
+    if (url.pathname === "/api/squad-turn" && request.method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+      const members = Array.isArray(body.members) ? body.members.slice(0, 4) : [];
+      const speakerIndex = Number(body.speakerIndex);
+      const history = Array.isArray(body.messages) ? body.messages.slice(-12).map(m => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: String(m.content || "").slice(0, 1400)
+      })).filter(m => m.content) : [];
+      if (members.length < 2 || members.length > 4) return json({ error: "Uma Squad precisa ter de 2 a 4 personagens." }, 400);
+      if (!Number.isInteger(speakerIndex) || speakerIndex < 0 || speakerIndex >= members.length) return json({ error: "Personagem que vai falar é inválido." }, 400);
+      const speaker = members[speakerIndex];
+      const memberNames = members.map(m => String(m.name || "Personagem").slice(0, 60));
+      const systemPrompt = [
+        "Você está participando de uma sala Costa Squad com até quatro personagens.",
+        "Seu personagem nesta resposta é " + String(speaker.name || "Personagem").slice(0, 60) + ".",
+        String(speaker.description || "Converse de forma natural e amigável.").slice(0, 1200),
+        "Outros personagens na sala: " + memberNames.filter((_, i) => i !== speakerIndex).join(", ") + ".",
+        "Responda em português brasileiro. Mantenha sua personalidade e interaja com o que os outros disseram.",
+        "Escreva apenas a fala e ações do seu próprio personagem. Não controle nem escreva falas dos outros personagens.",
+        "Se houver mensagem do usuário, responda a ela e considere também o contexto da sala.",
+        "Seja natural, evite repetir informações e mantenha a resposta relativamente curta."
+      ].join(" ");
+      try {
+        const result = await env.AI.run(MODEL, {
+          messages: [{ role: "system", content: systemPrompt }, ...history],
+          max_tokens: 280,
+          temperature: 0.85
+        });
+        const reply = result?.response || result?.choices?.[0]?.message?.content;
+        if (!reply) return json({ error: "O modelo não retornou uma resposta." }, 502);
+        return json({ reply });
+      } catch (error) {
+        console.error("Costa Squad AI error:", error);
+        return json({ error: "Não foi possível gerar a próxima fala da Squad." }, 500);
+      }
+    }
+
     if (url.pathname === "/api/chat" && request.method === "POST") {
       let body;
       try { body = await request.json(); } catch { return json({ error: "Corpo JSON inválido." }, 400); }
