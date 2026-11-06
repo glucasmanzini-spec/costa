@@ -42,18 +42,26 @@ const starterCharacters = [
 ];
 
 function renderMessageContent(content) {
-  const parts = String(content ?? "").split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
+  const text = String(content ?? "");
+  const tokenPattern = /(\\*\\*.*?\\*\\*|\\*.*?\\*)/gs;
+  const nodes = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = tokenPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(<React.Fragment key={key++}>{text.slice(lastIndex, match.index)}</React.Fragment>);
     }
-    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
-      return <em key={index}>{part.slice(1, -1)}</em>;
+    const token = match[0];
+    if (token.startsWith("**")) {
+      nodes.push(<strong key={key++} style={{ fontWeight: 800, fontStyle: "normal" }}>{token.slice(2, -2)}</strong>);
+    } else {
+      nodes.push(<em key={key++} style={{ fontStyle: "italic" }}>{token.slice(1, -1)}</em>);
     }
-    return part.split("\n").map((line, lineIndex) => (
-      <React.Fragment key={index + "-" + lineIndex}>{lineIndex > 0 && <br />}{line}</React.Fragment>
-    ));
-  });
+    lastIndex = match.index + token.length;
+  }
+  if (lastIndex < text.length) nodes.push(<React.Fragment key={key++}>{text.slice(lastIndex)}</React.Fragment>);
+  return nodes;
 }
 
 function App() {
