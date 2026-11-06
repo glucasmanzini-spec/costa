@@ -44,6 +44,7 @@ const starterCharacters = [
 function App() {
   const [characters, setCharacters] = useState(starterCharacters);
   const [selected, setSelected] = useState(null);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [messagesById, setMessagesById] = useState({});
   const [chatCounts, setChatCounts] = useState({});
   const [countedChatIds, setCountedChatIds] = useState(() => new Set());
@@ -111,18 +112,31 @@ function App() {
     `${c.name} ${c.tagline}`.toLowerCase().includes(search.toLowerCase())
   ), [characters, search]);
 
-  const messages = selected ? (messagesById[selected.id] || []) : [];
+  const messages = activeChatId ? (messagesById[activeChatId] || []) : [];
 
   function openCharacter(character) {
+    const chatId = crypto.randomUUID();
     setSelected(character);
+    setActiveChatId(chatId);
+    setMessagesById(prev => ({
+      ...prev,
+      [chatId]: [{ role: "assistant", content: character.greeting }]
+    }));
+    setDraft("");
     setMobileMenu(false);
     setNotice("");
-    if (!messagesById[character.id]) {
-      setMessagesById(prev => ({
-        ...prev,
-        [character.id]: [{ role: "assistant", content: character.greeting }]
-      }));
-    }
+  }
+
+  function startNewConversation() {
+    if (!selected) return;
+    const chatId = crypto.randomUUID();
+    setActiveChatId(chatId);
+    setMessagesById(prev => ({
+      ...prev,
+      [chatId]: [{ role: "assistant", content: selected.greeting }]
+    }));
+    setDraft("");
+    setNotice("");
   }
 
   function updateMessages(id, next) {
@@ -134,7 +148,7 @@ function App() {
     const content = draft.trim();
     if (!content || !selected || busy) return;
     const next = [...messages, { role: "user", content }];
-    updateMessages(selected.id, next);
+    updateMessages(activeChatId, next);
     setDraft("");
     setBusy(true);
     setNotice("");
@@ -146,9 +160,9 @@ function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erro ao conversar com a IA.");
-      updateMessages(selected.id, [...next, { role: "assistant", content: data.reply }]);
-      if (!countedChatIds.has(selected.id)) {
-        setCountedChatIds(prev => new Set([...prev, selected.id]));
+      updateMessages(activeChatId, [...next, { role: "assistant", content: data.reply }]);
+      if (!countedChatIds.has(activeChatId)) {
+        setCountedChatIds(prev => new Set([...prev, activeChatId]));
         fetch("/api/chat-counts", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ characterId: selected.id })
@@ -246,6 +260,7 @@ function App() {
               <div className={`avatar large ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>
               <h1>{selected.name}</h1><p>{selected.tagline}</p>
               <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>Conversa privada nesta sessão</span></div>
+              <button className="new-chat-button" onClick={startNewConversation}><Plus size={15} /> Nova conversa</button>
             </div>
             <div className="messages-area">
               {messages.map((message, index) => (
