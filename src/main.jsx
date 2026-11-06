@@ -51,6 +51,10 @@ function App() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [newTagline, setNewTagline] = useState("");
+  const [newGreeting, setNewGreeting] = useState("");
+  const [newAvatar, setNewAvatar] = useState("");
+  const [characterBusy, setCharacterBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [authMode, setAuthMode] = useState(null);
@@ -86,6 +90,13 @@ function App() {
     await fetch("/api/auth/logout", { method: "POST" });
     setAuthUser(null);
   }
+
+  useEffect(() => {
+    if (!authUser) { setCharacters(starterCharacters); return; }
+    fetch("/api/characters").then(r => r.json()).then(data => {
+      if (Array.isArray(data.characters)) setCharacters([...data.characters.map(c => ({ ...c, emoji: "✨", color: "violet" })), ...starterCharacters]);
+    }).catch(() => {});
+  }, [authUser]);
 
   const filtered = useMemo(() => characters.filter(c =>
     `${c.name} ${c.tagline}`.toLowerCase().includes(search.toLowerCase())
@@ -134,22 +145,47 @@ function App() {
     }
   }
 
-  function createCharacter(event) {
+  async function createCharacter(event) {
     event.preventDefault();
-    if (!newName.trim() || !newDescription.trim()) return;
-    const character = {
-      id: `custom-${Date.now()}`,
-      name: newName.trim(),
-      tagline: "Seu novo personagem",
-      description: newDescription.trim(),
-      emoji: "✨", color: "violet",
-      greeting: `Olá! Eu sou ${newName.trim()}. Sobre o que vamos conversar?`
-    };
-    setCharacters(prev => [character, ...prev]);
-    setCreating(false);
-    setNewName("");
-    setNewDescription("");
-    openCharacter(character);
+    if (!authUser) { setCreating(false); setAuthMode("login"); setNotice("Entre na sua conta para salvar seus personagens."); return; }
+    if (characterBusy) return;
+    setCharacterBusy(true);
+    setNotice("");
+    try {
+      const response = await fetch("/api/characters", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName, tagline: newTagline, description: newDescription, greeting: newGreeting, avatarUrl: newAvatar || null })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o personagem.");
+      const character = { ...data.character, avatarUrl: data.character.avatar_url, emoji: "✨", color: "violet" };
+      setCharacters(prev => [character, ...prev.filter(c => c.id !== character.id)]);
+      setCreating(false); setNewName(""); setNewTagline(""); setNewDescription(""); setNewGreeting(""); setNewAvatar("");
+      openCharacter(character);
+    } catch (error) { setNotice(error.message); }
+    finally { setCharacterBusy(false); }
+  }
+
+  async function chooseAvatar(file) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setNotice("Escolha uma imagem JPG, PNG ou WebP."); return; }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file);
+      });
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+        canvas.width = Math.max(1, Math.round(image.width * scale)); canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.78);
+        if (compressed.length > 700000) { setNotice("Essa imagem ficou muito grande. Escolha outra."); return; }
+        setNewAvatar(compressed); setNotice("");
+      };
+      image.onerror = () => setNotice("Não foi possível abrir essa imagem.");
+      image.src = dataUrl;
+    } catch { setNotice("Não foi possível carregar a imagem."); }
   }
 
   return (
@@ -169,7 +205,7 @@ function App() {
         <div className="side-characters">
           {characters.slice(0, 5).map(character => (
             <button className={`side-character ${selected?.id === character.id ? "chosen" : ""}`} key={character.id} onClick={() => openCharacter(character)}>
-              <span className={`avatar small ${character.color}`}>{character.emoji}</span><span>{character.name}</span>
+              <span className={`avatar small ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img src={character.avatar_url || character.avatarUrl} alt="" /> : character.emoji}</span><span>{character.name}</span>
             </button>
           ))}
         </div>
@@ -189,14 +225,14 @@ function App() {
           <section className="chat-view">
             <div className="chat-heading">
               <button className="back-button" onClick={() => setSelected(null)}><ArrowLeft size={18} /> Voltar</button>
-              <div className={`avatar large ${selected.color}`}>{selected.emoji}</div>
+              <div className={`avatar large ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>
               <h1>{selected.name}</h1><p>{selected.tagline}</p>
               <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>Conversa privada nesta sessão</span></div>
             </div>
             <div className="messages-area">
               {messages.map((message, index) => (
                 <div className={`message-row ${message.role}`} key={index}>
-                  {message.role === "assistant" && <div className={`avatar message-avatar ${selected.color}`}>{selected.emoji}</div>}
+                  {message.role === "assistant" && <div className={`avatar message-avatar ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>}
                   <div className="message-bubble">{message.content}</div>
                 </div>
               ))}
@@ -228,7 +264,7 @@ function App() {
             <div className="character-grid">
               {filtered.map(character => (
                 <button className="character-card" key={character.id} onClick={() => openCharacter(character)}>
-                  <div className={`card-art ${character.color}`}><div className="card-orbit"></div><span>{character.emoji}</span><div className="card-heart"><Heart size={16} /></div></div>
+                  <div className={`card-art ${character.color}`}>{(character.avatar_url || character.avatarUrl) ? <img className="character-photo" src={character.avatar_url || character.avatarUrl} alt="" /> : <><div className="card-orbit"></div><span>{character.emoji}</span></>}<div className="card-heart"><Heart size={16} /></div></div>
                   <div className="card-info"><div className="card-title">{character.name}<MoreHorizontal size={18} /></div><p>{character.tagline}</p><div className="card-footer"><span><MessageCircle size={13} /> Começar conversa</span><span className="sparkle-mini">✦</span></div></div>
                 </button>
               ))}
@@ -252,8 +288,13 @@ function App() {
         <form className="create-modal" onSubmit={createCharacter}>
           <div className="modal-top"><div><div className="eyebrow">PERSONAGEM NOVO</div><h2>Crie alguém especial</h2></div><button type="button" className="icon-button" onClick={() => setCreating(false)}><X /></button></div>
           <label>Nome do personagem<input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ex.: Alex" maxLength={40} required /></label>
+          <label>Frase curta (opcional)<input value={newTagline} onChange={e => setNewTagline(e.target.value)} placeholder="Ex.: Uma amiga divertida e curiosa" maxLength={100} /></label>
+          <label>Saudação inicial (opcional)<textarea value={newGreeting} onChange={e => setNewGreeting(e.target.value)} placeholder="O que o personagem diz ao iniciar uma conversa?" rows={2} maxLength={500} /></label>
           <label>Personalidade e instruções<textarea value={newDescription} onChange={e => setNewDescription(e.target.value)} placeholder="Descreva como ele fala, age e quais assuntos gosta..." rows={5} maxLength={1500} required /></label>
-          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCreating(false)}>Cancelar</button><button className="hero-button" type="submit">Criar personagem <Sparkles size={16} /></button></div>
+          <label>Foto de perfil (opcional)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => chooseAvatar(e.target.files?.[0])} /></label>
+          {newAvatar && <div className="avatar-preview"><img src={newAvatar} alt="Prévia da foto do personagem" /><button type="button" className="cancel-button" onClick={() => setNewAvatar("")}>Remover foto</button></div>}
+          {notice && <div className="notice">{notice}</div>}
+          <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCreating(false)}>Cancelar</button><button className="hero-button" type="submit" disabled={characterBusy}>{characterBusy ? "Salvando..." : "Criar personagem"} <Sparkles size={16} /></button></div>
         </form>
       </div>}
     </div>
