@@ -141,6 +141,34 @@ async function authRoutes(request, env, url) {
 }
 
 
+async function characterCountRoutes(request, env) {
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS character_chat_counts (character_id TEXT PRIMARY KEY, chat_count INTEGER NOT NULL DEFAULT 0)"
+  ).run();
+
+  if (request.method === "GET") {
+    const result = await env.DB.prepare(
+      "SELECT character_id, chat_count FROM character_chat_counts"
+    ).all();
+    return json({ counts: result.results || [] });
+  }
+
+  if (request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Dados inválidos." }, 400); }
+    const characterId = String(body.characterId || "").trim().slice(0, 100);
+    if (!characterId) return json({ error: "Personagem inválido." }, 400);
+    await env.DB.prepare(
+      "INSERT INTO character_chat_counts (character_id, chat_count) VALUES (?, 1) ON CONFLICT(character_id) DO UPDATE SET chat_count = chat_count + 1"
+    ).bind(characterId).run();
+    const row = await env.DB.prepare(
+      "SELECT chat_count FROM character_chat_counts WHERE character_id = ?"
+    ).bind(characterId).first();
+    return json({ characterId, chatCount: row?.chat_count || 1 });
+  }
+  return json({ error: "Método não permitido." }, 405);
+}
+
 async function characterRoutes(request, env) {
   const user = await currentUser(request, env);
   if (!user) return json({ error: "Entre na sua conta para gerenciar personagens." }, 401);
@@ -178,6 +206,11 @@ async function characterRoutes(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/chat-counts") {
+      try { return await characterCountRoutes(request, env); }
+      catch (error) { console.error("Chat count error:", error); return json({ error: "Não foi possível atualizar os contadores." }, 500); }
+    }
 
     if (url.pathname === "/api/characters") {
       try { return await characterRoutes(request, env); }
