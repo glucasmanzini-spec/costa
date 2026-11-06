@@ -416,7 +416,7 @@ function App() {
         </div>
         <button className="create-button" onClick={() => setCreating(true)}><Plus size={18} /> Criar personagem</button>
         <nav className="main-nav">
-          <button className={!selected ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
+          <button className={!selected && !showProfile && !showHistory && !showPersonas ? "nav-item active" : "nav-item"} onClick={() => { setSelected(null); setShowProfile(false); setShowHistory(false); setShowPersonas(false); setMobileMenu(false); }}><Compass size={18} /> Explorar</button>
           <button className={`nav-item ${showHistory ? "active" : ""}`} onClick={loadHistory}><MessageCircle size={18} /> Minhas conversas</button>
           <button className={`nav-item ${showPersonas ? "active" : ""}`} onClick={openPersonas}><Sparkles size={18} /> Minhas personas</button>
           <button className={`nav-item ${showProfile ? "active" : ""}`} onClick={openOwnProfile}><Heart size={18} /> Meu perfil</button>
