@@ -336,7 +336,7 @@ function App() {
       const nextMessages = [...currentMessages, { role: "assistant", speaker: squadMembers[speakerIndex].name, character: squadMembers[speakerIndex], content: data.reply }];
       squadMessagesRef.current = nextMessages; setSquadMessages(nextMessages);
       squadSpeakerRef.current = (speakerIndex + 1) % squadMembers.length; setSquadSpeaker(squadSpeakerRef.current);
-    } catch (error) { setNotice(error.message); setSquadAuto(false); }
+    } catch (error) { setNotice(error.message); squadAutoRef.current = false; setSquadAuto(false); }
     finally { setSquadBusy(false); }
   }
 
