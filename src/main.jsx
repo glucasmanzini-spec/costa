@@ -96,6 +96,7 @@ function App() {
   const [creatingPersona, setCreatingPersona] = useState(false);
   const [personaName, setPersonaName] = useState("");
   const [personaDescription, setPersonaDescription] = useState("");
+  const [personaAvatar, setPersonaAvatar] = useState("");
   const [personaBusy, setPersonaBusy] = useState(false);
   const [messagesById, setMessagesById] = useState({});
   const [chatCounts, setChatCounts] = useState({});
@@ -168,11 +169,11 @@ function App() {
     if (personaBusy) return;
     setPersonaBusy(true); setNotice("");
     try {
-      const response = await fetch("/api/personas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: personaName, description: personaDescription }) });
+      const response = await fetch("/api/personas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: personaName, description: personaDescription, avatarUrl: personaAvatar || null }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Não foi possível criar a persona.");
       setPersonas(prev => [data.persona, ...prev]); setActivePersonaId(data.persona.id);
-      setPersonaName(""); setPersonaDescription(""); setCreatingPersona(false); setShowPersonas(true);
+      setPersonaName(""); setPersonaDescription(""); setPersonaAvatar(""); setCreatingPersona(false); setShowPersonas(true);
     } catch (error) { setNotice(error.message); }
     finally { setPersonaBusy(false); }
   }
@@ -257,6 +258,7 @@ function App() {
     } catch { setNotice("Não foi possível carregar essa imagem."); }
   }
   function chooseProfileAvatar(file) { chooseProfileImage(file, setProfileAvatar, 512, "Foto de perfil"); }
+  function choosePersonaAvatar(file) { chooseProfileImage(file, setPersonaAvatar, 512, "Foto da persona"); }
   function chooseProfileCover(file) { chooseProfileImage(file, setProfileCover, 1200, "Capa"); }
 
   function beginProfileEdit() {
@@ -674,12 +676,15 @@ function App() {
               <h1>{selected.name}</h1><p>{selected.tagline}</p>
               <div className="chat-meta"><span><span className="online-dot" /> Personagem de IA</span><span>·</span><span>{authUser ? "Histórico salvo na sua conta" : "Conversa não salva"}</span></div>
               <button className="new-chat-button" onClick={startNewConversation} disabled={busy}><Plus size={15} /> Nova conversa</button>
-              <label className="persona-selector">Conversar como
-                <select value={activePersonaId} onChange={e => setActivePersonaId(e.target.value)}>
-                  <option value="">Eu mesmo (sem persona)</option>
-                  {personas.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
-                </select>
-              </label>
+              <div className="persona-selector-wrap">
+                <label className="persona-selector">Conversar como
+                  <select value={activePersonaId} onChange={e => setActivePersonaId(e.target.value)}>
+                    <option value="">Eu mesmo (sem persona)</option>
+                    {personas.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
+                  </select>
+                </label>
+                {(() => { const persona = personas.find(persona => persona.id === activePersonaId); const avatar = persona?.avatar_url || authUser?.avatar_url; return <div className="chat-identity-preview"><span className="chat-identity-avatar">{avatar ? <img src={avatar} alt="" /> : (persona?.name || authUser?.display_name || "Você").slice(0,1).toUpperCase()}</span><span>{persona ? persona.name : authUser?.display_name || "Você"}</span></div>; })()}
+              </div>
             </div>
             <div className="chat-content-layout">
               <div className="chat-main-column">
@@ -688,9 +693,10 @@ function App() {
                 <div className={`message-row ${message.role}`} key={index}>
                   {message.role === "assistant" && <div className={`avatar message-avatar ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div>}
                   <div className="message-bubble">{renderMessageContent(message.content)}</div>
+                  {message.role === "user" && <div className="chat-user-avatar">{(personas.find(persona => persona.id === activePersonaId)?.avatar_url || authUser?.avatar_url) ? <img src={personas.find(persona => persona.id === activePersonaId)?.avatar_url || authUser?.avatar_url} alt="" /> : (personas.find(persona => persona.id === activePersonaId)?.name || authUser?.display_name || "Você").slice(0,1).toUpperCase()}</div>}
                 </div>
               ))}
-              {busy && <div className="message-row assistant"><div className={`avatar message-avatar ${selected.color}`}>{selected.emoji}</div><div className="message-bubble typing"><i></i><i></i><i></i></div></div>}
+              {busy && <div className="message-row assistant"><div className={`avatar message-avatar ${selected.color}`}>{(selected.avatar_url || selected.avatarUrl) ? <img src={selected.avatar_url || selected.avatarUrl} alt="" /> : selected.emoji}</div><div className="message-bubble typing"><i></i><i></i><i></i></div></div>}
               <div className="message-end" />
             </div>
             {notice && <div className="notice">{notice}</div>}
@@ -772,7 +778,7 @@ function App() {
             <div className="section-heading history-heading"><div><div className="eyebrow muted">SUA IDENTIDADE NAS CONVERSAS</div><h2>Minhas personas</h2></div><button className="hero-button" onClick={() => { setPersonaName(""); setPersonaDescription(""); setCreatingPersona(true); }}><Plus size={16} /> Criar persona</button></div>
             <p className="persona-help">Crie identidades diferentes para usar nas conversas. Cada persona tem seu próprio nome e descrição.</p>
             {personas.length === 0 ? <div className="empty-state">Você ainda não criou nenhuma persona.</div> : <div className="persona-grid">
-              {personas.map(persona => <div className="persona-card" key={persona.id}><div className="persona-card-icon"><Sparkles size={19} /></div><strong>{persona.name}</strong><p>{persona.description}</p><button className={activePersonaId === persona.id ? "persona-active" : "cancel-button"} onClick={() => setActivePersonaId(persona.id)}>{activePersonaId === persona.id ? "Selecionada" : "Usar nas conversas"}</button></div>)}
+              {personas.map(persona => <div className="persona-card" key={persona.id}><div className="persona-card-icon">{persona.avatar_url ? <img src={persona.avatar_url} alt="" /> : <Sparkles size={19} />}</div><strong>{persona.name}</strong><p>{persona.description}</p><button className={activePersonaId === persona.id ? "persona-active" : "cancel-button"} onClick={() => setActivePersonaId(persona.id)}>{activePersonaId === persona.id ? "Selecionada" : "Usar nas conversas"}</button></div>)}
             </div>}
           </section>
         ) : showHistory ? (
@@ -819,6 +825,8 @@ function App() {
       {creatingPersona && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setCreatingPersona(false); }}>
         <form className="create-modal" onSubmit={createPersona}>
           <div className="modal-top"><div><div className="eyebrow">NOVA PERSONA</div><h2>Crie sua identidade</h2></div><button type="button" className="icon-button" onClick={() => setCreatingPersona(false)}><X /></button></div>
+          <label>Foto de perfil da persona<input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => choosePersonaAvatar(e.target.files?.[0])} /></label>
+          {personaAvatar && <div className="avatar-preview"><img src={personaAvatar} alt="Prévia da foto da persona" /><button type="button" className="cancel-button" onClick={() => setPersonaAvatar("")}>Remover foto</button></div>}
           <label>Nome da persona<input value={personaName} onChange={e => setPersonaName(e.target.value)} placeholder="Ex.: Alex, aventureiro..." maxLength={40} required /></label>
           <label>Descrição<textarea value={personaDescription} onChange={e => setPersonaDescription(e.target.value)} placeholder="Descreva quem você é nessa conversa, sua personalidade, história e como o personagem deve te enxergar..." rows={5} maxLength={1200} required /></label>
           {notice && <div className="notice">{notice}</div>}
