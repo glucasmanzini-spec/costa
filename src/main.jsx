@@ -238,6 +238,7 @@ function App() {
 
   async function chooseProfileImage(file, setter, maxDimension, label) {
     if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { setNotice("A imagem deve ter no máximo 20 MB."); return; }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setNotice("Escolha uma imagem JPG, PNG ou WebP."); return; }
     try {
       const dataUrl = await new Promise((resolve, reject) => {
@@ -449,9 +450,26 @@ function App() {
 
   function readCommentImage(file, setter) {
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 1024 * 1024) { setNotice("Escolha uma imagem de até 1 MB."); return; }
+    if (!file.type.startsWith("image/")) { setNotice("Escolha um arquivo de imagem."); return; }
+    if (file.size > 20 * 1024 * 1024) { setNotice("A imagem deve ter no máximo 20 MB."); return; }
     const reader = new FileReader();
-    reader.onload = () => setter(String(reader.result || ""));
+    reader.onload = () => {
+      const image = new window.Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, 1280 / Math.max(image.width, image.height));
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) { setNotice("Não foi possível processar essa imagem."); return; }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", 0.78);
+        if (compressed.length > 1400000) { setNotice("A imagem ficou muito grande após a compressão. Escolha outra."); return; }
+        setter(compressed); setNotice("");
+      };
+      image.onerror = () => setNotice("Não foi possível abrir a imagem.");
+      image.src = String(reader.result || "");
+    };
     reader.onerror = () => setNotice("Não foi possível ler a imagem.");
     reader.readAsDataURL(file);
   }
@@ -573,6 +591,7 @@ function App() {
 
   async function chooseAvatar(file) {
     if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { setNotice("A imagem deve ter no máximo 20 MB."); return; }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setNotice("Escolha uma imagem JPG, PNG ou WebP."); return; }
     try {
       const dataUrl = await new Promise((resolve, reject) => {
