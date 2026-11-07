@@ -243,7 +243,7 @@ function App() {
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file);
       });
-      const image = new Image();
+      const image = new window.Image();
       image.onload = () => {
         const canvas = document.createElement("canvas");
         const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
