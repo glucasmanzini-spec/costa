@@ -341,7 +341,7 @@ async function personaRoutes(request, env) {
     const avatarUrl = typeof body.avatarUrl === "string" ? body.avatarUrl : null;
     if (name.length < 2 || name.length > 40) return json({ error: "O nome precisa ter entre 2 e 40 caracteres." }, 400);
     if (description.length < 2 || description.length > 1200) return json({ error: "A descrição precisa ter entre 2 e 1.200 caracteres." }, 400);
-    if (avatarUrl && (!/^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A foto da persona deve ser JPG, PNG ou WebP e ter no máximo 500 KB." }, 400);
+    if (avatarUrl && (!/^data:image[/](jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(avatarUrl) || avatarUrl.length > 700000)) return json({ error: "A foto da persona deve ser JPG, PNG ou WebP e ter no máximo 500 KB." }, 400);
     const id = crypto.randomUUID();
     await env.DB.prepare("INSERT INTO personas (id, user_id, name, description, avatar_url) VALUES (?, ?, ?, ?, ?)").bind(id, user.id, name, description, avatarUrl).run();
     return json({ persona: { id, name, description, avatar_url: avatarUrl } }, 201);
