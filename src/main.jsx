@@ -197,7 +197,6 @@ function App() {
   }
 
   async function openUserProfile(username) {
-    if (!authUser) { setAuthMode("login"); return; }
     setProfileBusy(true); setNotice("");
     try {
       const response = await fetch("/api/users?username=" + encodeURIComponent(username));
