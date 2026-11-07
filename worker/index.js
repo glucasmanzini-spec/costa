@@ -158,9 +158,26 @@ async function authRoutes(request, env, url) {
 
 
 async function profileRoutes(request, env, url) {
-  const user = await currentUser(request, env);
-  if (!user) return json({ error: "Entre na sua conta para acessar perfis." }, 401);
   await ensureProfileSchema(env);
+
+  // Perfis públicos podem ser consultados sem login.
+  if (url.pathname === "/api/users" && request.method === "GET") {
+    const username = String(url.searchParams.get("username") || "").trim().toLowerCase();
+    if (username) {
+      const profile = await env.DB.prepare("SELECT p.user_id, p.username, p.bio, COALESCE(p.avatar_url, u.avatar_url) AS avatar_url, p.cover_url, p.created_at, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username = ?").bind(username).first();
+      if (!profile) return json({ error: "Perfil não encontrado." }, 404);
+      const characters = await env.DB.prepare("SELECT id, name, tagline, avatar_url FROM characters WHERE user_id = ? AND visibility = 'public' ORDER BY created_at DESC LIMIT 30").bind(profile.user_id).all();
+      const { user_id, ...publicProfile } = profile;
+      return json({ profile: { ...publicProfile, characters: characters.results || [], characters_count: characters.results?.length || 0 } });
+    }
+    const search = String(url.searchParams.get("search") || "").trim().slice(0, 40);
+    if (search.length < 2) return json({ users: [] });
+    const result = await env.DB.prepare("SELECT p.username, p.bio, COALESCE(p.avatar_url, u.avatar_url) AS avatar_url, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username LIKE ? OR u.display_name LIKE ? ORDER BY u.display_name LIMIT 20").bind("%" + search + "%", "%" + search + "%").all();
+    return json({ users: result.results || [] });
+  }
+
+  const user = await currentUser(request, env);
+  if (!user) return json({ error: "Entre na sua conta para acessar seu perfil." }, 401);
 
   if (url.pathname === "/api/profile" && request.method === "GET") {
     const profile = await env.DB.prepare("SELECT username, bio, avatar_url, cover_url, created_at, updated_at FROM user_profiles WHERE user_id = ?").bind(user.id).first();
@@ -188,20 +205,6 @@ async function profileRoutes(request, env, url) {
     return json({ profile: { username, bio, avatar_url: avatarUrl, cover_url: coverUrl, display_name: displayName, email: user.email, created_at: user.created_at } });
   }
 
-  if (url.pathname === "/api/users" && request.method === "GET") {
-    const username = String(url.searchParams.get("username") || "").trim().toLowerCase();
-    if (username) {
-      const profile = await env.DB.prepare("SELECT p.user_id, p.username, p.bio, p.avatar_url, p.cover_url, p.created_at, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username = ?").bind(username).first();
-      if (!profile) return json({ error: "Perfil não encontrado." }, 404);
-      const characters = await env.DB.prepare("SELECT id, name, tagline, avatar_url FROM characters WHERE user_id = ? AND visibility = 'public' ORDER BY created_at DESC LIMIT 30").bind(profile.user_id).all();
-      const { user_id, ...publicProfile } = profile;
-      return json({ profile: { ...publicProfile, characters: characters.results || [], characters_count: characters.results?.length || 0 } });
-    }
-    const search = String(url.searchParams.get("search") || "").trim().slice(0, 40);
-    if (search.length < 2) return json({ users: [] });
-    const result = await env.DB.prepare("SELECT p.username, p.bio, p.avatar_url, u.display_name FROM user_profiles p JOIN users u ON u.id = p.user_id WHERE p.username LIKE ? OR u.display_name LIKE ? ORDER BY u.display_name LIMIT 20").bind("%" + search + "%", "%" + search + "%").all();
-    return json({ users: result.results || [] });
-  }
   return json({ error: "Método não permitido." }, 405);
 }
 
