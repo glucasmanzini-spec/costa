@@ -370,7 +370,7 @@ async function favoriteRoutes(request, env) {
   };
   if (request.method === "GET") {
     const result = await env.DB.prepare(
-      "SELECT f.character_id AS id, COALESCE(c.name, json_extract(f.character_data, '$.name')) AS name, COALESCE(c.tagline, json_extract(f.character_data, '$.tagline')) AS tagline, COALESCE(c.description, json_extract(f.character_data, '$.description')) AS description, COALESCE(c.greeting, json_extract(f.character_data, '$.greeting')) AS greeting, COALESCE(c.avatar_url, json_extract(f.character_data, '$.avatar_url')) AS avatar_url, COALESCE(c.visibility, 'public') AS visibility, COALESCE(p.username, 'costa') AS creator_username, f.created_at FROM user_favorites f LEFT JOIN characters c ON c.id = f.character_id WHERE f.user_id = ? AND (c.id IS NULL OR c.visibility = 'public' OR c.user_id = ?) ORDER BY f.created_at DESC"
+      "SELECT f.character_id AS id, COALESCE(c.name, json_extract(f.character_data, '$.name')) AS name, COALESCE(c.tagline, json_extract(f.character_data, '$.tagline')) AS tagline, COALESCE(c.description, json_extract(f.character_data, '$.description')) AS description, COALESCE(c.greeting, json_extract(f.character_data, '$.greeting')) AS greeting, COALESCE(c.avatar_url, json_extract(f.character_data, '$.avatar_url')) AS avatar_url, COALESCE(c.visibility, 'public') AS visibility, COALESCE(p.username, 'costa') AS creator_username, f.created_at FROM user_favorites f LEFT JOIN characters c ON c.id = f.character_id LEFT JOIN user_profiles p ON p.user_id = c.user_id WHERE f.user_id = ? AND (c.id IS NULL OR c.visibility = 'public' OR c.user_id = ?) ORDER BY f.created_at DESC"
     ).bind(user.id, user.id).all();
     return json({ favorites: result.results || [] });
   }
